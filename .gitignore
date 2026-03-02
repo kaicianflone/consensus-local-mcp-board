@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# build outputs
+/dist/
+**/dist/
+/.output/
+/.nuxt/
+
+# local runtime/state
+/data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# temp/cache
+.tmp/
+.temp/
+.cache/
+coverage/
