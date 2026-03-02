@@ -12,7 +12,7 @@ export async function startMcpServer() {
 
   server.setRequestHandler(z.object({ method: z.literal('tools/call'), params: z.object({ name: z.string(), arguments: z.any().optional() }) }) as any,
     async (req: any) => {
-      const out = invokeTool(req.params.name, req.params.arguments ?? {});
+      const out = await invokeTool(req.params.name, req.params.arguments ?? {});
       return { content: [{ type: 'text', text: JSON.stringify(out) }] };
     });
 

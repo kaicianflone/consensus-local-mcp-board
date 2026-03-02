@@ -1,10 +1,11 @@
 import express from 'express';
 import { z } from 'zod';
-import { EvaluateInputSchema } from '@local-mcp-board/shared';
+import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
 import { createBoard, getBoard, getRun, listBoards, listEvents, listRuns, searchEvents } from './db/store.js';
-import { evaluate } from './engine/evaluate.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
+import { guardEvaluatePost } from './api/guard.evaluate.post.js';
+import { humanApprovePost } from './api/human.approve.post.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -41,14 +42,59 @@ app.get('/api/mcp/events', (req, res) => {
   }
 });
 
-app.post('/api/mcp/evaluate', (req, res) => {
+app.post('/api/mcp/evaluate', async (req, res) => {
   try {
     const parsed = EvaluateInputSchema.parse(req.body);
-    const r = evaluate(parsed);
+    const r = await invokeTool('guard.evaluate', parsed);
     res.json(r);
   } catch (e: any) {
     const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'EVALUATE_FAILED';
     res.status(toHttpStatus(code)).json(err(code, 'Failed to evaluate action', e?.message));
+  }
+});
+
+app.post('/api/guard.evaluate', async (req, res) => {
+  try {
+    const parsed = GuardEvaluateRequestSchema.parse(req.body);
+    res.json(await guardEvaluatePost(parsed));
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'EVALUATE_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to start guard workflow', e?.message));
+  }
+});
+
+app.post('/api/human.approve', async (req, res) => {
+  try {
+    const parsed = HumanApprovalRequestSchema.parse(req.body);
+    res.json(await humanApprovePost(parsed));
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'HUMAN_APPROVE_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to capture human approval', e?.message));
+  }
+});
+
+// Chat inbound endpoint for HITL replies (e.g., webhook from chat surface)
+app.post('/api/chat/hitl-reply', async (req, res) => {
+  try {
+    const body = z.object({
+      runId: z.string(),
+      replyText: z.string(),
+      approver: z.string().default('human'),
+      idempotencyKey: z.string().optional(),
+      boardId: z.string().optional()
+    }).parse(req.body ?? {});
+
+    const out = await humanApprovePost({
+      runId: body.runId,
+      replyText: body.replyText,
+      approver: body.approver,
+      idempotencyKey: body.idempotencyKey ?? `${body.runId}:${Date.now()}`,
+      boardId: body.boardId
+    });
+    res.json(out);
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'HUMAN_APPROVE_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to process HITL reply', e?.message));
   }
 });
 
@@ -61,9 +107,9 @@ app.get('/api/mcp/audit/search', (req, res) => {
   }
 });
 
-app.post('/api/mcp/tool/:name', (req, res) => {
+app.post('/api/mcp/tool/:name', async (req, res) => {
   try {
-    const out = invokeTool(req.params.name as any, req.body ?? {});
+    const out = await invokeTool(req.params.name as any, req.body ?? {});
     res.json(out);
   } catch (e: any) {
     const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'TOOL_CALL_FAILED';

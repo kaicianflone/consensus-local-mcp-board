@@ -21,10 +21,10 @@ export function createBoard(name: string, config: Json = {}) {
 export function listBoards() { return db.prepare('SELECT * FROM boards ORDER BY created_at DESC').all(); }
 export function getBoard(id: string) { return db.prepare('SELECT * FROM boards WHERE id = ?').get(id); }
 
-export function createRun(boardId: string, meta: Json = {}) {
-  const id = nanoid(); const ts = Date.now();
-  db.prepare('INSERT INTO runs(id,board_id,status,created_at,updated_at,meta_json) VALUES (?,?,?,?,?,?)').run(id, boardId, 'OPEN', ts, ts, JSON.stringify(redact(meta)));
-  return { id, boardId, status: 'OPEN', created_at: ts, updated_at: ts };
+export function createRun(boardId: string, meta: Json = {}, id?: string) {
+  const runId = id || nanoid(); const ts = Date.now();
+  db.prepare('INSERT INTO runs(id,board_id,status,created_at,updated_at,meta_json) VALUES (?,?,?,?,?,?)').run(runId, boardId, 'OPEN', ts, ts, JSON.stringify(redact(meta)));
+  return { id: runId, boardId, status: 'OPEN', created_at: ts, updated_at: ts };
 }
 export function getRun(id: string) { return db.prepare('SELECT * FROM runs WHERE id=?').get(id); }
 export function listRuns(boardId?: string, limit = 100) {
