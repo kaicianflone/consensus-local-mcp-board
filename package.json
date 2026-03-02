@@ -1,5 +1,5 @@
 {
-  "name": "local-mcp-board",
+  "name": "consensus-local-mcp-board",
   "private": true,
   "workspaces": [
     "server",

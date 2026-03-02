@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { invokeTool, listToolNames } from '../tools/registry.js';
 
 export async function startMcpServer() {
-  const server = new Server({ name: 'local-mcp-board', version: '0.0.1' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'consensus-local-mcp-board', version: '0.0.1' }, { capabilities: { tools: {} } });
 
   server.setRequestHandler(z.object({ method: z.literal('tools/list') }) as any, async () => ({
     tools: listToolNames().map((name) => ({ name, description: `Tool ${name}`, inputSchema: { type: 'object' } }))

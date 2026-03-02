@@ -1,4 +1,4 @@
-# local-mcp-board
+# consensus-local-mcp-board
 
 Standalone local-first MCP + Board system for experimentation and rapid app prototyping.
 
