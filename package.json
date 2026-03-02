@@ -1,12 +1,22 @@
 {
   "name": "local-mcp-board",
   "private": true,
-  "workspaces": ["server", "web", "shared"],
+  "workspaces": [
+    "server",
+    "web",
+    "shared"
+  ],
   "scripts": {
     "dev": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "mcp:dev": "npm --workspace server run mcp:dev",
     "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build"
   },
   "devDependencies": {
+    "@types/node": "^25.3.3",
     "concurrently": "^9.0.1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "react-router-dom": "^7.13.1"
   }
 }

@@ -1,0 +1,52 @@
+import { z } from 'zod';
+import { EvaluateInputSchema, GuardResultSchema, type GuardResult } from '@local-mcp-board/shared';
+import { createBoard, getBoard, getRun, listBoards, listEvents, searchEvents } from '../db/store.js';
+import { evaluate } from '../engine/evaluate.js';
+
+const BoardGetSchema = z.object({ id: z.string() });
+const RunGetSchema = z.object({ id: z.string() });
+const EventSearchSchema = z.object({ query: z.string().default(''), limit: z.number().int().min(1).max(500).default(100) });
+
+function guardByType(type: string, input: unknown): GuardResult {
+  const parsed = EvaluateInputSchema.parse(input);
+  return GuardResultSchema.parse(evaluate({ ...parsed, action: { ...parsed.action, type } }));
+}
+
+export const toolRegistry = {
+  'guard.evaluate': {
+    input: EvaluateInputSchema,
+    run: (input: unknown) => GuardResultSchema.parse(evaluate(EvaluateInputSchema.parse(input)))
+  },
+  'guard.send_email': { input: EvaluateInputSchema, run: (input: unknown) => guardByType('send_email', input) },
+  'guard.code_merge': { input: EvaluateInputSchema, run: (input: unknown) => guardByType('code_merge', input) },
+  'guard.publish': { input: EvaluateInputSchema, run: (input: unknown) => guardByType('publish', input) },
+  'guard.support_reply': { input: EvaluateInputSchema, run: (input: unknown) => guardByType('support_reply', input) },
+  'persona.generate': {
+    input: z.object({ boardName: z.string().default('default') }),
+    run: (input: unknown) => ({ board: createBoard(z.object({ boardName: z.string().default('default') }).parse(input).boardName) })
+  },
+  'persona.respawn': {
+    input: z.object({ boardId: z.string() }),
+    run: (input: unknown) => ({ status: 'RESPAWN_SCaffold', board: getBoard(z.object({ boardId: z.string() }).parse(input).boardId) })
+  },
+  'board.list': { input: z.object({}), run: () => ({ boards: listBoards() }) },
+  'board.get': { input: BoardGetSchema, run: (input: unknown) => ({ board: getBoard(BoardGetSchema.parse(input).id) }) },
+  'run.get': { input: RunGetSchema, run: (input: unknown) => ({ run: getRun(RunGetSchema.parse(input).id) }) },
+  'audit.search': { input: EventSearchSchema, run: (input: unknown) => ({ events: searchEvents(EventSearchSchema.parse(input).query, EventSearchSchema.parse(input).limit) }) },
+  'human.approve': {
+    input: z.object({ runId: z.string(), approver: z.string().default('human') }),
+    run: (input: unknown) => ({ status: 'PENDING_SCaffold', input: z.object({ runId: z.string(), approver: z.string().default('human') }).parse(input) })
+  }
+} as const;
+
+export type ToolName = keyof typeof toolRegistry;
+
+export function invokeTool(name: ToolName, input: unknown) {
+  const tool = toolRegistry[name];
+  const parsed = tool.input.parse(input);
+  return tool.run(parsed);
+}
+
+export function listToolNames(): ToolName[] {
+  return Object.keys(toolRegistry) as ToolName[];
+}
