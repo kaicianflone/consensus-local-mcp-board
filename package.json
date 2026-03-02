@@ -11,9 +11,6 @@
     "mcp:dev": "npm --workspace server run mcp:dev",
     "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build"
   },
-  "engines": {
-    "node": ">=22 <23"
-  },
   "devDependencies": {
     "@types/node": "^25.3.3",
     "concurrently": "^9.0.1"
