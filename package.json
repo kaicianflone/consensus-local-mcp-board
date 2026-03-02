@@ -1,0 +1,12 @@
+{
+  "name": "local-mcp-board",
+  "private": true,
+  "workspaces": ["server", "web", "shared"],
+  "scripts": {
+    "dev": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
