@@ -7,6 +7,9 @@
     "mcp:dev": "tsx src/mcp/server.ts --stdio",
     "build": "tsc -p tsconfig.json"
   },
+  "engines": {
+    "node": ">=22 <23"
+  },
   "dependencies": {
     "@local-mcp-board/shared": "0.0.1",
     "better-sqlite3": "^11.7.0",
