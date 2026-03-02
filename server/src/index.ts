@@ -8,7 +8,34 @@ import { guardEvaluatePost } from './api/guard.evaluate.post.js';
 import { humanApprovePost } from './api/human.approve.post.js';
 
 const app = express();
+const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
+
+// CORS for local web dev (Vite on 5173)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin === 'http://127.0.0.1:5173' || origin === 'http://localhost:5173') {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
+
+// Verbose request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    if (!verbose) return;
+    const ms = Date.now() - start;
+    const bodyPreview = req.body && Object.keys(req.body).length ? JSON.stringify(req.body).slice(0, 400) : '';
+    console.log(`[api] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${ms}ms${bodyPreview ? ` body=${bodyPreview}` : ''}`);
+  });
+  next();
+});
 
 app.get('/api/mcp/tools', (_req, res) => res.json({ tools: listToolNames() }));
 

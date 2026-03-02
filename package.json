@@ -7,8 +7,8 @@
     "shared"
   ],
   "scripts": {
-    "dev": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
-    "mcp:dev": "npm --workspace server run mcp:dev",
+    "dev": "VERBOSE=1 concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "mcp:dev": "VERBOSE=1 npm --workspace server run mcp:dev",
     "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build"
   },
   "devDependencies": {

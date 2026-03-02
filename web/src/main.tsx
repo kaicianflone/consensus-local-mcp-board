@@ -8,7 +8,7 @@ import './styles.css';
 
 function App(){
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path='/' element={<Navigate to='/local-board' replace />} />
         <Route path='/local-board' element={<BoardsPage />} />
