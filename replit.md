@@ -10,6 +10,22 @@ This is a monorepo with three workspaces:
 - **`server/`** — Express API server running on `localhost:4010`, using SQLite (`better-sqlite3`) for persistence
 - **`web/`** — React + Vite frontend running on `0.0.0.0:5000`
 
+## Frontend Stack
+
+- React 18 + TypeScript + Vite
+- Tailwind CSS 3 with CSS variables for theming (dark mode)
+- shadcn/ui-style components (Radix UI primitives + class-variance-authority)
+- @dnd-kit for drag-and-drop sortable workflow nodes
+- lucide-react for icons
+
+## UI Structure
+
+- **`web/src/components/ui/`** — Base UI components (Button, Card, Input, Select, Badge, Dialog, Separator)
+- **`web/src/components/layout/`** — Header with nav
+- **`web/src/components/workflow/`** — NodePalette, NodeCanvas (drag/drop/reorder), NodeSettings (edit/save/cancel), EventTimeline
+- **`web/src/components/agents/`** — AgentsPanel (add/edit/cancel/save agents & participants)
+- **`web/src/pages/`** — WorkflowsDashboard (home), BoardsPage, BoardDetailPage, RunDetailPage
+
 ## Development
 
 Run everything with:
@@ -35,10 +51,6 @@ The Vite dev server proxies `/api/*` requests to the backend at `http://localhos
 ## Database
 
 SQLite via `better-sqlite3`. Migrations are in `server/src/db/migrations/`. The store is in `server/src/db/store.ts`.
-
-## MCP Server
-
-A stdio MCP server is available via `npm run mcp:dev` (not part of the main workflow).
 
 ## Notes
 
