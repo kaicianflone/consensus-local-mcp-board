@@ -55,8 +55,16 @@ export default function WorkflowsPage() {
   const [participants, setParticipants] = useState<any[]>([]);
   const [agentName, setAgentName] = useState('merge-agent-1');
   const [boardForParticipants, setBoardForParticipants] = useState('workflow-system');
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
+  const selectedAgent = useMemo(() => agents.find((a:any) => a.id === selectedAgentId) || null, [agents, selectedAgentId]);
+  const scopeDebug = useMemo(() => {
+    const required = ['workflow.run', 'guard.evaluate', 'human.approve', 'github.merge_pr'];
+    const scopes: string[] = selectedAgent ? JSON.parse(String(selectedAgent.scopes_json || '[]')) : [];
+    const missing = required.filter((s) => !(scopes.includes(s) || scopes.includes('tool.*')));
+    return { required, scopes, missing, ready: missing.length === 0 };
+  }, [selectedAgent]);
 
   async function refreshList() {
     try {
@@ -72,7 +80,9 @@ export default function WorkflowsPage() {
   async function refreshActors() {
     try {
       const a = await listAgents();
-      setAgents(a.agents || []);
+      const items = a.agents || [];
+      setAgents(items);
+      if (!selectedAgentId && items.length) setSelectedAgentId(items[0].id);
       const p = await listParticipants(boardForParticipants);
       setParticipants(p.participants || []);
     } catch {}
@@ -154,6 +164,18 @@ export default function WorkflowsPage() {
           <button onClick={async()=>{ if(!agents[0]) return; await createParticipant({ boardId: boardForParticipants, subjectType:'agent', subjectId: agents[0].id, role:'voter', weight:1, reputation:0.6 }); await assignPolicy({ boardId: boardForParticipants, policyId:'default', participants:[agents[0].id], weightingMode:'hybrid', quorum:0.6 }); await refreshActors(); }}>Add as Participant + Assign Policy</button>
         </div>
         <div className='small'>Agents: {agents.length} · Participants: {participants.length}</div>
+        <div className='card'>
+          <h4>Agent Scopes Debug</h4>
+          <div className='row'>
+            <select value={selectedAgentId} onChange={(e)=>setSelectedAgentId(e.target.value)}>
+              {agents.map((a:any)=><option key={a.id} value={a.id}>{a.name} ({a.id})</option>)}
+            </select>
+            <span className='badge'>{scopeDebug.ready ? 'READY' : 'MISSING_SCOPES'}</span>
+          </div>
+          <div className='small'>Required: {scopeDebug.required.join(', ')}</div>
+          <div className='small'>Agent scopes: {scopeDebug.scopes.join(', ') || '(none)'}</div>
+          {!scopeDebug.ready && <div className='small'>Missing: {scopeDebug.missing.join(', ')}</div>}
+        </div>
         {participants.slice(0,8).map((p:any)=><div key={p.id} className='row'><span className='badge'>{p.subject_type}</span><span>{p.subject_id}</span><span className='small'>w={p.weight} rep={p.reputation}</span><input style={{width:70}} defaultValue={p.weight} onBlur={async(e)=>{ const v=Number(e.target.value); if(!Number.isNaN(v)) await updateParticipant(p.id,{weight:v}); }} /><input style={{width:70}} defaultValue={p.reputation} onBlur={async(e)=>{ const v=Number(e.target.value); if(!Number.isNaN(v)) await updateParticipant(p.id,{reputation:v}); }} /><button onClick={async()=>{ await submitConsensusVote({ boardId: p.board_id, runId: runs[0]?.run_id || 'demo-run', participantId: p.id, decision:'YES', confidence:0.8, rationale:'UI test vote', idempotencyKey:`ui-${Date.now()}` }); }}>Vote YES</button></div>)}
       </div>
 
