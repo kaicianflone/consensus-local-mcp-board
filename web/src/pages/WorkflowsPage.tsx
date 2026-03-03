@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { createWorkflow, getWorkflow, getWorkflows, runWorkflow, updateWorkflow } from '../lib/api';
+import { approveWorkflowRun, createWorkflow, getWorkflow, getWorkflows, runWorkflow, updateWorkflow } from '../lib/api';
 
 type NodeType = 'trigger' | 'agent' | 'guard' | 'hitl' | 'action';
 type WorkflowNode = { id: string; type: NodeType; label: string; config: Record<string, any> };
@@ -121,7 +121,7 @@ export default function WorkflowsPage() {
           ))}
 
           <h3>Runs</h3>
-          {runs.map((r:any)=><div key={r.id} className='row'><span className='badge'>{r.status}</span><Link to={`/boards/run/${r.run_id}`}>{r.run_id}</Link></div>)}
+          {runs.map((r:any)=><div key={r.id} className='row'><span className='badge'>{r.status}</span><Link to={`/boards/run/${r.run_id}`}>{r.run_id}</Link>{r.status==='WAITING_HUMAN' && <><button onClick={async()=>{await approveWorkflowRun(r.run_id,'YES','kai'); await loadWorkflow(workflowId!);}}>Approve</button><button onClick={async()=>{await approveWorkflowRun(r.run_id,'NO','kai'); await loadWorkflow(workflowId!);}}>Block</button></>}</div>)}
         </div>
 
         <div className='card'>

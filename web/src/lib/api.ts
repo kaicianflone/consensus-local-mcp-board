@@ -25,4 +25,5 @@ export async function getWorkflows(){ return fetch(`${API}/workflows`).then(j); 
 export async function createWorkflow(name:string, definition:any){ return fetch(`${API}/workflows`, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ name, definition }) }).then(j); }
 export async function updateWorkflow(id:string, patch:any){ return fetch(`${API}/workflows/${id}`, { method:'PUT', headers:{'content-type':'application/json'}, body: JSON.stringify(patch) }).then(j); }
 export async function runWorkflow(id:string){ return fetch(`${API}/workflows/${id}/run`, { method:'POST' }).then(j); }
+export async function approveWorkflowRun(runId:string, decision:'YES'|'NO', approver='human'){ return fetch(`${API}/workflow-runs/${runId}/approve`, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ decision, approver }) }).then(j); }
 export async function getWorkflow(id:string){ return fetch(`${API}/workflows/${id}`).then(j); }

@@ -1,12 +1,12 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { createBoard, createWorkflow, getBoard, getRun, getWorkflow, listBoards, listEvents, listRuns, listWorkflowRuns, listWorkflows, searchEvents, updateWorkflow } from './db/store.js';
+import { createBoard, createWorkflow, getBoard, getRun, getWorkflow, getWorkflowRunByRunId, listBoards, listEvents, listRuns, listWorkflowRuns, listWorkflows, searchEvents, updateWorkflow } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
 import { humanApprovePost } from './api/human.approve.post.js';
-import { runWorkflow } from './workflows/runner.js';
+import { resumeWorkflow, runWorkflow } from './workflows/runner.js';
 
 const app = express();
 const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
@@ -100,6 +100,21 @@ app.post('/api/workflows/:id/run', async (req, res) => {
     res.json({ ok: true, workflowId: workflow.id, ...out });
   } catch (e: any) {
     res.status(500).json(err('WORKFLOW_RUN_FAILED', 'Failed to run workflow', e?.message));
+  }
+});
+
+app.post('/api/workflow-runs/:runId/approve', async (req, res) => {
+  try {
+    const body = z.object({ decision: z.enum(['YES', 'NO']), approver: z.string().default('human') }).parse(req.body || {});
+    const wr = getWorkflowRunByRunId(req.params.runId);
+    if (!wr) return res.status(404).json(err('WORKFLOW_RUN_NOT_FOUND', 'Workflow run not found'));
+    const workflow = getWorkflow(wr.workflow_id);
+    if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
+    const definition = JSON.parse(workflow.definition_json || '{}');
+    const out = await resumeWorkflow(definition, workflow.id, req.params.runId, body.decision, body.approver);
+    res.json({ ok: true, workflowId: workflow.id, ...out });
+  } catch (e: any) {
+    res.status(500).json(err('WORKFLOW_RESUME_FAILED', 'Failed to resume workflow', e?.message));
   }
 });
 

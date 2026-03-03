@@ -104,3 +104,7 @@ export function updateWorkflowRunStatus(runId: string, status: string) {
 export function listWorkflowRuns(workflowId: string, limit = 100) {
   return db.prepare('SELECT * FROM workflow_runs WHERE workflow_id=? ORDER BY created_at DESC LIMIT ?').all(workflowId, limit);
 }
+
+export function getWorkflowRunByRunId(runId: string) {
+  return db.prepare('SELECT * FROM workflow_runs WHERE run_id=? LIMIT 1').get(runId) as any;
+}
