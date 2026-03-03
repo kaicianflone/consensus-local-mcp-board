@@ -20,6 +20,9 @@ const TRIGGER_SOURCES = [
   { id: 'github.pr.opened', icon: '🐙', label: 'GitHub PR Opened (MCP/GitHub)' },
   { id: 'github.pr.updated', icon: '🐙', label: 'GitHub PR Updated' },
   { id: 'github.pr.review_requested', icon: '🐙', label: 'GitHub PR Review Requested' },
+  { id: 'chat.message', icon: '💬', label: 'Chat Message' },
+  { id: 'chat.mention', icon: '@', label: 'Chat Mention' },
+  { id: 'chat.command', icon: '⌨️', label: 'Chat Command' },
   { id: 'manual', icon: '🖱️', label: 'Manual' },
   { id: 'webhook', icon: '🪝', label: 'Webhook' }
 ] as const;
@@ -36,7 +39,7 @@ function defaults(type: NodeType) {
   if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, toolAccess: 'restricted' };
   if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, assignedAgents: ['default-agent'], weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
   if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', timeoutSec: 900, weightMode: 'weighted', requiredVotes: 2 };
-  if (type === 'trigger') return { source: 'github.pr.opened', provider: 'github-mcp', repo: '', branch: 'main' };
+  if (type === 'trigger') return { source: 'github.pr.opened', provider: 'github-mcp', repo: '', branch: 'main', channel: 'slack', chatType: 'group', matchText: '', fromUsers: '' };
   return { action: 'noop' };
 }
 
@@ -183,9 +186,32 @@ export default function WorkflowsPage() {
                       {TRIGGER_SOURCES.map((s) => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
                     </select>
                   </label>
-                  <label>Provider <input value={selected.config.provider || 'github-mcp'} onChange={(e) => updateConfig('provider', e.target.value)} /></label>
-                  <label>Repo <input value={selected.config.repo || ''} onChange={(e) => updateConfig('repo', e.target.value)} placeholder='owner/repo' /></label>
-                  <label>Branch <input value={selected.config.branch || 'main'} onChange={(e) => updateConfig('branch', e.target.value)} /></label>
+                  {(selected.config.source || '').startsWith('github.') ? (
+                    <>
+                      <label>Provider <input value={selected.config.provider || 'github-mcp'} onChange={(e) => updateConfig('provider', e.target.value)} /></label>
+                      <label>Repo <input value={selected.config.repo || ''} onChange={(e) => updateConfig('repo', e.target.value)} placeholder='owner/repo' /></label>
+                      <label>Branch <input value={selected.config.branch || 'main'} onChange={(e) => updateConfig('branch', e.target.value)} /></label>
+                    </>
+                  ) : null}
+
+                  {(selected.config.source || '').startsWith('chat.') ? (
+                    <>
+                      <label>Channel
+                        <select value={selected.config.channel || 'slack'} onChange={(e) => updateConfig('channel', e.target.value)}>
+                          {CHAT_CHANNELS.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                        </select>
+                      </label>
+                      <label>Chat Type
+                        <select value={selected.config.chatType || 'group'} onChange={(e) => updateConfig('chatType', e.target.value)}>
+                          <option value='group'>Group</option>
+                          <option value='direct'>Direct</option>
+                          <option value='all'>All</option>
+                        </select>
+                      </label>
+                      <label>Match Text / Command <input value={selected.config.matchText || ''} onChange={(e) => updateConfig('matchText', e.target.value)} placeholder='e.g. /merge or #deploy' /></label>
+                      <label>From Users (comma separated) <input value={selected.config.fromUsers || ''} onChange={(e) => updateConfig('fromUsers', e.target.value)} placeholder='user1,user2' /></label>
+                    </>
+                  ) : null}
                 </div>
               )}
               {selected.type === 'hitl' && (

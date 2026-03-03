@@ -217,7 +217,23 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
 }
 
 async function executeNode(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }) {
-  if (node.type === 'trigger') return { ok: true, trigger: node.config?.mode || 'manual' };
+  if (node.type === 'trigger') {
+    const source = node.config?.source || node.config?.mode || 'manual';
+    if (String(source).startsWith('github.')) {
+      return { ok: true, trigger: source, provider: node.config?.provider || 'github-mcp', repo: node.config?.repo || '', branch: node.config?.branch || 'main' };
+    }
+    if (String(source).startsWith('chat.')) {
+      return {
+        ok: true,
+        trigger: source,
+        channel: node.config?.channel || 'slack',
+        chatType: node.config?.chatType || 'group',
+        matchText: node.config?.matchText || '',
+        fromUsers: node.config?.fromUsers || ''
+      };
+    }
+    return { ok: true, trigger: source };
+  }
 
   if (node.type === 'agent') {
     const votes = await evaluateWithAiSdk({
