@@ -9,3 +9,23 @@ a { color:#8cff9b; text-decoration:none; }
 pre { background:#070c08; border:1px solid #1d3522; padding:8px; border-radius:8px; overflow:auto; }
 button { background:#173d20; color:#d9ffe2; border:1px solid #2f6b3f; padding:6px 10px; border-radius:8px; cursor:pointer; }
 input, select { background:#0a120d; color:#d9ffe2; border:1px solid #2b4f33; border-radius:8px; padding:6px 8px; }
+
+h1,h2,h3,h4 { margin: 6px 0 10px; }
+label { display:flex; flex-direction:column; gap:6px; font-size:12px; }
+
+.grid { display:grid; gap:12px; }
+.grid.two { grid-template-columns: repeat(2, minmax(0,1fr)); }
+.grid.workflows { grid-template-columns: 260px 1fr 320px; align-items:start; }
+
+.nav-card { display:block; min-height:140px; }
+.nav-card:hover { border-color:#4ea963; }
+
+.node-item { cursor: grab; }
+.canvas { min-height: 260px; }
+.node-chip { margin: 0 8px 8px 0; }
+.node-chip.active { border-color:#8cff9b; }
+.stack { display:grid; gap:10px; margin-top:10px; }
+
+@media (max-width: 980px) {
+  .grid.two, .grid.workflows { grid-template-columns: 1fr; }
+}
