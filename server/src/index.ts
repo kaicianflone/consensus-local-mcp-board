@@ -36,6 +36,48 @@ function validateWorkflowDefinition(definition: any) {
     action: ['action']
   };
 
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i] || {};
+    const t = node.type;
+    const c = node.config || {};
+
+    if (!['trigger', 'agent', 'guard', 'hitl', 'action'].includes(t)) {
+      return `Invalid node type at index ${i}: ${String(t)}`;
+    }
+
+    if (t === 'trigger') {
+      const source = String(c.source || c.mode || 'manual');
+      if (source.startsWith('github.')) {
+        if (!String(c.repo || '').includes('/')) return `Trigger index ${i}: github source requires repo in owner/repo format`;
+      }
+      if (source === 'chat.command' || source === 'chat.message' || source === 'chat.mention') {
+        const channel = String(c.channel || '');
+        const validChannels = ['slack', 'discord', 'telegram', 'whatsapp', 'signal', 'googlechat', 'irc', 'imessage'];
+        if (!validChannels.includes(channel)) return `Trigger index ${i}: invalid chat channel '${channel}'`;
+        if (source === 'chat.command' && !String(c.matchText || '').trim()) return `Trigger index ${i}: chat.command requires matchText`;
+      }
+    }
+
+    if (t === 'guard') {
+      const q = Number(c.quorum ?? 0.7);
+      if (Number.isNaN(q) || q < 0 || q > 1) return `Guard index ${i}: quorum must be between 0 and 1`;
+      const r = Number(c.riskThreshold ?? 0.7);
+      if (Number.isNaN(r) || r < 0 || r > 1) return `Guard index ${i}: riskThreshold must be between 0 and 1`;
+    }
+
+    if (t === 'hitl') {
+      const channel = String(c.channel || '');
+      const validChannels = ['slack', 'discord', 'telegram', 'whatsapp', 'signal', 'googlechat', 'irc', 'imessage'];
+      if (!validChannels.includes(channel)) return `HITL index ${i}: invalid channel '${channel}'`;
+      const requiredVotes = Number(c.requiredVotes ?? 1);
+      if (requiredVotes < 1 || requiredVotes > 50) return `HITL index ${i}: requiredVotes must be between 1 and 50`;
+    }
+
+    if (t === 'action') {
+      if (!String(c.action || '').trim()) return `Action index ${i}: action is required`;
+    }
+  }
+
   for (let i = 0; i < nodes.length - 1; i++) {
     const cur = nodes[i]?.type;
     const nxt = nodes[i + 1]?.type;
