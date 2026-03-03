@@ -129,7 +129,7 @@ export default function WorkflowsPage() {
           ))}
 
           <h3>Runs</h3>
-          {runs.filter((r:any)=>engineFilter==='all' ? true : (r.engine||'local')===engineFilter).map((r:any)=><div key={r.id} className='row'><span className='badge'>{r.status}</span><span className='badge'>{r.engine || 'local'}</span><Link to={`/boards/run/${r.run_id}`}>{r.run_id}</Link>{r.external_run_id ? <span className='small'>ext: {r.external_run_id}</span> : null}{r.status==='WAITING_HUMAN' && <><button onClick={async()=>{await approveWorkflowRun(r.run_id,'YES','kai'); await loadWorkflow(workflowId!);}}>Approve</button><button onClick={async()=>{await approveWorkflowRun(r.run_id,'NO','kai'); await loadWorkflow(workflowId!);}}>Block</button></>}</div>)}
+          {runs.filter((r:any)=>engineFilter==='all' ? true : (r.engine||'local')===engineFilter).map((r:any)=><div key={r.id} className='row'><span className='badge'>{r.status}</span><span className='badge' title={(r.engine||'local')==='devkit' ? 'Workflow DevKit runtime: durable start/resume + native inspect tools.' : 'Local in-process runner: fast for dev, less durable for long-running flows.'}>{r.engine || 'local'}</span><Link to={`/boards/run/${r.run_id}`}>{r.run_id}</Link>{r.external_run_id ? <span className='small'>ext: {r.external_run_id}</span> : null}{r.status==='WAITING_HUMAN' && <><button onClick={async()=>{await approveWorkflowRun(r.run_id,'YES','kai'); await loadWorkflow(workflowId!);}}>Approve</button><button onClick={async()=>{await approveWorkflowRun(r.run_id,'NO','kai'); await loadWorkflow(workflowId!);}}>Block</button></>}</div>)}
         </div>
 
         <div className='card'>
