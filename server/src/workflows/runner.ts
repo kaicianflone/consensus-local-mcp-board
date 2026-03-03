@@ -35,7 +35,7 @@ export async function runWorkflow(definition: any, workflowId: string, opts: Run
       });
     }
   }
-  return runWithLocalEngine(definition, workflowId, opts);
+  return executeLocalFlow(definition, workflowId, opts);
 }
 
 export async function resumeWorkflow(definition: any, workflowId: string, runId: string, decision: 'YES' | 'NO', approver = 'human') {
@@ -62,30 +62,41 @@ export async function resumeWorkflow(definition: any, workflowId: string, runId:
   const waitPayload = waits[0]?.payload_json ? JSON.parse(String(waits[0].payload_json)) : null;
   const startIndex = typeof waitPayload?.node_index === 'number' ? waitPayload.node_index + 1 : 0;
 
-  return runWithLocalEngine(definition, workflowId, { runId, startIndex, context: { hitlDecision: decision, approvedBy: approver } });
+  return executeLocalFlow(definition, workflowId, { runId, startIndex, context: { hitlDecision: decision, approvedBy: approver } });
 }
 
 async function runWithDevkit(definition: any, workflowId: string, opts: RunOpts = {}) {
   const boardId = String(definition?.boardId || 'workflow-system');
   const runId = ensureRun(boardId, workflowId, opts.runId);
 
-  // Runtime integration point: use Workflow DevKit if available.
-  // We use dynamic import by expression to avoid hard compile dependency.
   const importer = new Function('m', 'return import(m)') as (m: string) => Promise<any>;
   const api = await importer('workflow/api');
+  const jobs = await importer(new URL('./devkit-job.js', import.meta.url).href);
 
-  // If workflow/api is available, register metadata and execute through local deterministic path
-  // while preserving external_run_id linkage. (Next step can move to true start/resume primitives.)
-  const externalRunId = `devkit-${runId}`;
-  upsertWorkflowRunLink(runId, workflowId, 'devkit', externalRunId, { startIndex: opts.startIndex || 0 });
+  const start = api?.start;
+  const job = jobs?.devkitRunWorkflowJob;
+  if (typeof start !== 'function' || typeof job !== 'function') {
+    throw new Error('workflow/api start or devkit job not available');
+  }
+
+  const started = await start(job, [{
+    definition,
+    workflowId,
+    runId,
+    startIndex: opts.startIndex || 0,
+    context: opts.context || {}
+  }]);
+
+  const externalRunId = started?.id || started?.runId || started?.workflowRunId || `devkit-${runId}`;
+  upsertWorkflowRunLink(runId, workflowId, 'devkit', String(externalRunId), { startIndex: opts.startIndex || 0 });
   appendEvent(boardId, runId, 'WORKFLOW_ENGINE_SELECTED', {
     workflow_id: workflowId,
     engine: 'devkit',
     external_run_id: externalRunId,
-    api_loaded: Boolean(api)
+    api_loaded: true
   });
 
-  return runWithLocalEngine(definition, workflowId, opts, { engine: 'devkit', externalRunId });
+  return { runId, boardId, engine: 'devkit', externalRunId };
 }
 
 async function resumeWithDevkit(definition: any, workflowId: string, runId: string, approver: string) {
@@ -101,7 +112,27 @@ async function resumeWithDevkit(definition: any, workflowId: string, runId: stri
   const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HITL', limit: 1 }) as any[];
   const waitPayload = waits[0]?.payload_json ? JSON.parse(String(waits[0].payload_json)) : null;
   const startIndex = typeof waitPayload?.node_index === 'number' ? waitPayload.node_index + 1 : 0;
-  return runWithLocalEngine(definition, workflowId, { runId, startIndex, context: { hitlDecision: 'YES', approvedBy: approver } }, { engine: 'devkit', externalRunId: link?.external_run_id || null });
+
+  const importer = new Function('m', 'return import(m)') as (m: string) => Promise<any>;
+  const api = await importer('workflow/api');
+  const jobs = await importer(new URL('./devkit-job.js', import.meta.url).href);
+  const start = api?.start;
+  const job = jobs?.devkitRunWorkflowJob;
+  if (typeof start !== 'function' || typeof job !== 'function') {
+    throw new Error('workflow/api start or devkit job not available');
+  }
+
+  const resumed = await start(job, [{
+    definition,
+    workflowId,
+    runId,
+    startIndex,
+    context: { hitlDecision: 'YES', approvedBy: approver }
+  }]);
+
+  const externalRunId = resumed?.id || resumed?.runId || resumed?.workflowRunId || link?.external_run_id || `devkit-${runId}`;
+  upsertWorkflowRunLink(runId, workflowId, 'devkit', String(externalRunId), { startIndex, resumedBy: approver });
+  return { runId, boardId, engine: 'devkit', externalRunId, resumed: true };
 }
 
 function ensureRun(boardId: string, workflowId: string, runId?: string) {
@@ -113,7 +144,7 @@ function ensureRun(boardId: string, workflowId: string, runId?: string) {
   return id;
 }
 
-async function runWithLocalEngine(definition: any, workflowId: string, opts: RunOpts = {}, link?: { engine: string; externalRunId?: string | null }) {
+export async function executeLocalFlow(definition: any, workflowId: string, opts: RunOpts = {}, link?: { engine: string; externalRunId?: string | null }) {
   const boardId = String(definition?.boardId || 'workflow-system');
   const runId = ensureRun(boardId, workflowId, opts.runId);
   upsertWorkflowRunLink(runId, workflowId, link?.engine || 'local', link?.externalRunId || null, { startIndex: opts.startIndex || 0 });
