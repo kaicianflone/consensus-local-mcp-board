@@ -11,6 +11,41 @@ import { resumeWorkflow, runWorkflow } from './workflows/runner.js';
 const app = express();
 const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
 
+const TEMPLATE_1 = {
+  boardId: 'workflow-system',
+  nodes: [
+    { id: 'trigger-github-pr', type: 'trigger', label: 'GitHub PR Opened', config: { source: 'github.pr.opened', repo: '', branch: 'main' } },
+    { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, assignedAgents: ['merge-agent-1'], policyPack: 'merge-default' } },
+    { id: 'persona-load', type: 'action', label: 'Load 3 Personas + Reputation', config: { action: 'persona.load', count: 3, sourceTool: 'consensus-persona-tools', useReputationWeights: true } },
+    { id: 'hitl-weighted-votes', type: 'hitl', label: 'Slack Weighted HITL Votes (2)', config: { channel: 'slack', mode: 'weighted-vote', requiredVotes: 2, weights: { reviewerA: 0.6, reviewerB: 0.4 }, threshold: 0.6 } },
+    { id: 'hitl-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
+    { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHitlYes: true, idempotencyKeyFrom: 'pr.sha' } }
+  ]
+};
+
+function validateWorkflowDefinition(definition: any) {
+  const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+  if (!nodes.length) return 'Workflow must include at least one node';
+  if (nodes[0]?.type !== 'trigger') return 'First node must be a trigger';
+
+  const allowedNext: Record<string, string[]> = {
+    trigger: ['agent', 'guard', 'action'],
+    agent: ['guard', 'hitl', 'action'],
+    guard: ['hitl', 'action'],
+    hitl: ['hitl', 'action', 'guard'],
+    action: ['action']
+  };
+
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const cur = nodes[i]?.type;
+    const nxt = nodes[i + 1]?.type;
+    if (!allowedNext[cur]?.includes(nxt)) {
+      return `Invalid node order: ${cur} cannot connect to ${nxt} at index ${i}`;
+    }
+  }
+  return null;
+}
+
 // CORS for local web dev (Vite on 5173)
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -62,12 +97,18 @@ app.get('/api/mcp/runs/:id', (req, res) => {
 });
 
 app.get('/api/workflows', (_req, res) => {
+  const existing = listWorkflows();
+  if (!existing.length) {
+    createWorkflow('Template 1 - GitHub PR Merge Guard', TEMPLATE_1 as any);
+  }
   res.json({ workflows: listWorkflows() });
 });
 
 app.post('/api/workflows', (req, res) => {
   try {
     const body = z.object({ name: z.string().min(1), definition: z.record(z.any()).default({}) }).parse(req.body || {});
+    const validationError = validateWorkflowDefinition(body.definition);
+    if (validationError) return res.status(400).json(err('INVALID_WORKFLOW', validationError));
     res.json({ workflow: createWorkflow(body.name, body.definition) });
   } catch (e: any) {
     res.status(400).json(err('INVALID_INPUT', 'Invalid workflow payload', e?.message));
@@ -83,6 +124,10 @@ app.get('/api/workflows/:id', (req, res) => {
 app.put('/api/workflows/:id', (req, res) => {
   try {
     const body = z.object({ name: z.string().optional(), definition: z.record(z.any()).optional() }).parse(req.body || {});
+    if (body.definition) {
+      const validationError = validateWorkflowDefinition(body.definition);
+      if (validationError) return res.status(400).json(err('INVALID_WORKFLOW', validationError));
+    }
     const workflow = updateWorkflow(req.params.id, body);
     if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
     res.json({ workflow });
@@ -96,6 +141,8 @@ app.post('/api/workflows/:id/run', async (req, res) => {
     const workflow = getWorkflow(req.params.id);
     if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
     const definition = JSON.parse(workflow.definition_json || '{}');
+    const validationError = validateWorkflowDefinition(definition);
+    if (validationError) return res.status(400).json(err('INVALID_WORKFLOW', validationError));
     const out = await runWorkflow(definition, workflow.id);
     res.json({ ok: true, workflowId: workflow.id, ...out });
   } catch (e: any) {

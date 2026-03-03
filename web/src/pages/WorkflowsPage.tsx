@@ -35,7 +35,11 @@ export default function WorkflowsPage() {
   async function refreshList() {
     try {
       const d = await getWorkflows();
-      setSaved(d.workflows || []);
+      const items = d.workflows || [];
+      setSaved(items);
+      if (!workflowId && items.length) {
+        await loadWorkflow(items[0].id);
+      }
     } catch {}
   }
 
