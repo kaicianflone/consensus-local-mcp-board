@@ -12,6 +12,14 @@ runMigrations(db);
 
 type Json = Record<string, unknown>;
 
+export type WorkflowRecord = {
+  id: string;
+  name: string;
+  definition_json: string;
+  created_at: number;
+  updated_at: number;
+};
+
 export function createBoard(name: string, config: Json = {}) {
   const id = nanoid();
   const ts = Date.now();
@@ -56,4 +64,43 @@ export function listEvents(filters: { boardId?: string; runId?: string; type?: s
 export function searchEvents(query: string, limit = 100) {
   const like = `%${query}%`;
   return db.prepare('SELECT * FROM events WHERE payload_json LIKE ? OR type LIKE ? ORDER BY ts DESC LIMIT ?').all(like, like, limit);
+}
+
+export function createWorkflow(name: string, definition: Json = {}) {
+  const id = nanoid();
+  const ts = Date.now();
+  db.prepare('INSERT INTO workflows(id,name,definition_json,created_at,updated_at) VALUES (?,?,?,?,?)').run(id, name, JSON.stringify(definition), ts, ts);
+  return getWorkflow(id);
+}
+
+export function listWorkflows(limit = 100) {
+  return db.prepare('SELECT * FROM workflows ORDER BY updated_at DESC LIMIT ?').all(limit);
+}
+
+export function getWorkflow(id: string) {
+  return db.prepare('SELECT * FROM workflows WHERE id=?').get(id) as WorkflowRecord | undefined;
+}
+
+export function updateWorkflow(id: string, patch: { name?: string; definition?: Json }) {
+  const current = getWorkflow(id);
+  if (!current) return null;
+  const nextName = patch.name ?? current.name;
+  const nextDef = patch.definition ?? JSON.parse(current.definition_json || '{}');
+  db.prepare('UPDATE workflows SET name=?, definition_json=?, updated_at=? WHERE id=?').run(nextName, JSON.stringify(nextDef), Date.now(), id);
+  return getWorkflow(id);
+}
+
+export function createWorkflowRun(workflowId: string, runId: string, status = 'OPEN') {
+  const id = nanoid();
+  const ts = Date.now();
+  db.prepare('INSERT INTO workflow_runs(id,workflow_id,run_id,status,created_at) VALUES (?,?,?,?,?)').run(id, workflowId, runId, status, ts);
+  return { id, workflow_id: workflowId, run_id: runId, status, created_at: ts };
+}
+
+export function updateWorkflowRunStatus(runId: string, status: string) {
+  db.prepare('UPDATE workflow_runs SET status=? WHERE run_id=?').run(status, runId);
+}
+
+export function listWorkflowRuns(workflowId: string, limit = 100) {
+  return db.prepare('SELECT * FROM workflow_runs WHERE workflow_id=? ORDER BY created_at DESC LIMIT ?').all(workflowId, limit);
 }

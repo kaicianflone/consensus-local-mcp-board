@@ -1,13 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { createWorkflow, getWorkflow, getWorkflows, runWorkflow, updateWorkflow } from '../lib/api';
 
 type NodeType = 'trigger' | 'agent' | 'guard' | 'hitl' | 'action';
-
-type WorkflowNode = {
-  id: string;
-  type: NodeType;
-  label: string;
-  config: Record<string, any>;
-};
+type WorkflowNode = { id: string; type: NodeType; label: string; config: Record<string, any> };
 
 const PALETTE: { type: NodeType; label: string }[] = [
   { type: 'trigger', label: 'Trigger' },
@@ -26,15 +22,54 @@ function defaults(type: NodeType) {
 }
 
 export default function WorkflowsPage() {
+  const [name, setName] = useState('workflow-1');
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<any[]>([]);
+  const [runs, setRuns] = useState<any[]>([]);
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
+
+  async function refreshList() {
+    try {
+      const d = await getWorkflows();
+      setSaved(d.workflows || []);
+    } catch {}
+  }
+
+  useEffect(() => { refreshList(); }, []);
+
+  async function loadWorkflow(id: string) {
+    const d = await getWorkflow(id);
+    const def = JSON.parse(d.workflow.definition_json || '{}');
+    setWorkflowId(id);
+    setName(d.workflow.name);
+    setNodes(def.nodes || []);
+    setRuns(d.runs || []);
+  }
 
   function addNode(type: NodeType) {
     const id = `${type}-${Date.now().toString(36)}`;
     setNodes((prev) => [...prev, { id, type, label: PALETTE.find((p) => p.type === type)?.label || type, config: defaults(type) }]);
     setSelectedId(id);
+  }
+
+  async function saveWorkflow() {
+    const definition = { boardId: 'workflow-system', nodes };
+    if (!workflowId) {
+      const out = await createWorkflow(name, definition);
+      setWorkflowId(out.workflow.id);
+    } else {
+      await updateWorkflow(workflowId, { name, definition });
+    }
+    await refreshList();
+  }
+
+  async function executeWorkflow() {
+    if (!workflowId) return;
+    await runWorkflow(workflowId);
+    await loadWorkflow(workflowId);
   }
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -52,24 +87,28 @@ export default function WorkflowsPage() {
   return (
     <div className='container'>
       <div className='row' style={{ justifyContent: 'space-between' }}>
-        <h2>Workflows</h2>
-        <div className='small'>Drag nodes into canvas. Runs will map to workflow observability timelines.</div>
+        <div className='row'><h2>Workflows</h2><Link to='/'>Home</Link><Link to='/boards'>Boards</Link></div>
+        <div className='small'>Drag nodes into canvas. Workflow run logs are written to Runs.</div>
+      </div>
+
+      <div className='card row'>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder='workflow name' />
+        <button onClick={saveWorkflow}>Save Workflow</button>
+        <button onClick={executeWorkflow} disabled={!workflowId}>Run Workflow</button>
+        <span className='small'>{workflowId ? `id: ${workflowId}` : 'not saved'}</span>
       </div>
 
       <div className='grid workflows'>
         <div className='card'>
           <h3>Palette</h3>
           {PALETTE.map((p) => (
-            <div
-              key={p.type}
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData('node-type', p.type)}
-              className='card node-item'
-              onClick={() => addNode(p.type)}
-            >
+            <div key={p.type} draggable onDragStart={(e) => e.dataTransfer.setData('node-type', p.type)} className='card node-item' onClick={() => addNode(p.type)}>
               {p.label}
             </div>
           ))}
+
+          <h3>Saved</h3>
+          {saved.map((w:any)=><button key={w.id} className='node-chip' onClick={()=>loadWorkflow(w.id)}>{w.name}</button>)}
         </div>
 
         <div className='card canvas' onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
@@ -80,6 +119,9 @@ export default function WorkflowsPage() {
               {n.label}
             </button>
           ))}
+
+          <h3>Runs</h3>
+          {runs.map((r:any)=><div key={r.id} className='row'><span className='badge'>{r.status}</span><Link to={`/boards/run/${r.run_id}`}>{r.run_id}</Link></div>)}
         </div>
 
         <div className='card'>

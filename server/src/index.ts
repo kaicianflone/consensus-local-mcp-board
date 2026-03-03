@@ -1,11 +1,12 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { createBoard, getBoard, getRun, listBoards, listEvents, listRuns, searchEvents } from './db/store.js';
+import { createBoard, createWorkflow, getBoard, getRun, getWorkflow, listBoards, listEvents, listRuns, listWorkflowRuns, listWorkflows, searchEvents, updateWorkflow } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
 import { humanApprovePost } from './api/human.approve.post.js';
+import { runWorkflow } from './workflows/runner.js';
 
 const app = express();
 const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
@@ -58,6 +59,48 @@ app.get('/api/mcp/runs/:id', (req, res) => {
   const run = getRun(req.params.id);
   if (!run) return res.status(404).json(err('RUN_NOT_FOUND', 'Run not found'));
   res.json({ run, events: listEvents({ runId: req.params.id, limit: 500 }) });
+});
+
+app.get('/api/workflows', (_req, res) => {
+  res.json({ workflows: listWorkflows() });
+});
+
+app.post('/api/workflows', (req, res) => {
+  try {
+    const body = z.object({ name: z.string().min(1), definition: z.record(z.any()).default({}) }).parse(req.body || {});
+    res.json({ workflow: createWorkflow(body.name, body.definition) });
+  } catch (e: any) {
+    res.status(400).json(err('INVALID_INPUT', 'Invalid workflow payload', e?.message));
+  }
+});
+
+app.get('/api/workflows/:id', (req, res) => {
+  const workflow = getWorkflow(req.params.id);
+  if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
+  res.json({ workflow, runs: listWorkflowRuns(req.params.id, 200) });
+});
+
+app.put('/api/workflows/:id', (req, res) => {
+  try {
+    const body = z.object({ name: z.string().optional(), definition: z.record(z.any()).optional() }).parse(req.body || {});
+    const workflow = updateWorkflow(req.params.id, body);
+    if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
+    res.json({ workflow });
+  } catch (e: any) {
+    res.status(400).json(err('INVALID_INPUT', 'Invalid workflow update', e?.message));
+  }
+});
+
+app.post('/api/workflows/:id/run', async (req, res) => {
+  try {
+    const workflow = getWorkflow(req.params.id);
+    if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
+    const definition = JSON.parse(workflow.definition_json || '{}');
+    const out = await runWorkflow(definition, workflow.id);
+    res.json({ ok: true, workflowId: workflow.id, ...out });
+  } catch (e: any) {
+    res.status(500).json(err('WORKFLOW_RUN_FAILED', 'Failed to run workflow', e?.message));
+  }
 });
 
 app.get('/api/mcp/events', (req, res) => {
