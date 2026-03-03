@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { approveWorkflowRun, createWorkflow, getWorkflow, getWorkflows, runWorkflow, updateWorkflow } from '../lib/api';
+import { approveWorkflowRun, assignPolicy, connectAgent, createParticipant, createWorkflow, getWorkflow, getWorkflows, listAgents, listParticipants, runWorkflow, submitConsensusVote, updateWorkflow } from '../lib/api';
 
 type NodeType = 'trigger' | 'agent' | 'guard' | 'hitl' | 'action';
 type WorkflowNode = { id: string; type: NodeType; label: string; config: Record<string, any> };
@@ -51,6 +51,10 @@ export default function WorkflowsPage() {
   const [saved, setSaved] = useState<any[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
   const [engineFilter, setEngineFilter] = useState<'all'|'devkit'|'local'>('all');
+  const [agents, setAgents] = useState<any[]>([]);
+  const [participants, setParticipants] = useState<any[]>([]);
+  const [agentName, setAgentName] = useState('merge-agent-1');
+  const [boardForParticipants, setBoardForParticipants] = useState('workflow-system');
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
 
@@ -65,7 +69,16 @@ export default function WorkflowsPage() {
     } catch {}
   }
 
-  useEffect(() => { refreshList(); }, []);
+  async function refreshActors() {
+    try {
+      const a = await listAgents();
+      setAgents(a.agents || []);
+      const p = await listParticipants(boardForParticipants);
+      setParticipants(p.participants || []);
+    } catch {}
+  }
+
+  useEffect(() => { refreshList(); refreshActors(); }, []);
 
   async function loadWorkflow(id: string) {
     const d = await getWorkflow(id);
@@ -130,6 +143,18 @@ export default function WorkflowsPage() {
             <option value='local'>local</option>
           </select>
         </label>
+      </div>
+
+      <div className='card'>
+        <h3>Agents & Consensus Participants</h3>
+        <div className='row'>
+          <input value={agentName} onChange={(e)=>setAgentName(e.target.value)} placeholder='agent name' />
+          <button onClick={async()=>{ const r=await connectAgent({name:agentName, scopes:['guard.evaluate','workflow.run'], boards:[boardForParticipants]}); alert(`Agent key (copy now): ${r.agent.apiKey}`); await refreshActors(); }}>Connect Agent</button>
+          <input value={boardForParticipants} onChange={(e)=>setBoardForParticipants(e.target.value)} placeholder='board id' />
+          <button onClick={async()=>{ if(!agents[0]) return; await createParticipant({ boardId: boardForParticipants, subjectType:'agent', subjectId: agents[0].id, role:'voter', weight:1, reputation:0.6 }); await assignPolicy({ boardId: boardForParticipants, policyId:'default', participants:[agents[0].id], weightingMode:'hybrid', quorum:0.6 }); await refreshActors(); }}>Add as Participant + Assign Policy</button>
+        </div>
+        <div className='small'>Agents: {agents.length} · Participants: {participants.length}</div>
+        {participants.slice(0,5).map((p:any)=><div key={p.id} className='row'><span className='badge'>{p.subject_type}</span><span>{p.subject_id}</span><span className='small'>w={p.weight} rep={p.reputation}</span><button onClick={async()=>{ await submitConsensusVote({ boardId: p.board_id, runId: runs[0]?.run_id || 'demo-run', participantId: p.id, decision:'YES', confidence:0.8, rationale:'UI test vote', idempotencyKey:`ui-${Date.now()}` }); }}>Vote YES</button></div>)}
       </div>
 
       <div className='grid workflows'>

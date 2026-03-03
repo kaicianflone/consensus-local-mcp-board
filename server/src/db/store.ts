@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
+import crypto from 'node:crypto';
 import { runMigrations } from './migrate.js';
 import { redact } from '../utils/redact.js';
 
@@ -135,4 +136,86 @@ export function upsertWorkflowRunLink(runId: string, workflowId: string, engine:
 
 export function getWorkflowRunLink(runId: string) {
   return db.prepare('SELECT * FROM workflow_run_links WHERE run_id=? LIMIT 1').get(runId) as any;
+}
+
+function hashToken(token: string) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function connectAgent(input: { name: string; scopes?: string[]; boards?: string[]; workflows?: string[] }) {
+  const id = nanoid();
+  const apiKey = `ag_${nanoid()}_${nanoid()}`;
+  const apiKeyHash = hashToken(apiKey);
+  const ts = Date.now();
+  db.prepare('INSERT INTO agents(id,name,api_key_hash,scopes_json,boards_json,workflows_json,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(id, input.name, apiKeyHash, JSON.stringify(input.scopes || []), JSON.stringify(input.boards || []), JSON.stringify(input.workflows || []), 'active', ts, ts);
+  return { id, name: input.name, apiKey, created_at: ts };
+}
+
+export function listAgents() {
+  return db.prepare('SELECT id,name,scopes_json,boards_json,workflows_json,status,created_at,updated_at FROM agents ORDER BY created_at DESC').all();
+}
+
+export function getAgentByApiKey(apiKey: string) {
+  const h = hashToken(apiKey);
+  return db.prepare('SELECT * FROM agents WHERE api_key_hash=? AND status=? LIMIT 1').get(h, 'active') as any;
+}
+
+export function createParticipant(input: { boardId: string; subjectType: 'agent' | 'human'; subjectId: string; role?: string; weight?: number; reputation?: number; metadata?: Json }) {
+  const id = nanoid();
+  const ts = Date.now();
+  db.prepare('INSERT INTO participants(id,board_id,subject_type,subject_id,role,weight,reputation,status,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, input.boardId, input.subjectType, input.subjectId, input.role || 'voter', input.weight ?? 1, input.reputation ?? 0.5, 'active', JSON.stringify(input.metadata || {}), ts, ts);
+  return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
+}
+
+export function listParticipants(boardId: string) {
+  return db.prepare('SELECT * FROM participants WHERE board_id=? ORDER BY created_at DESC').all(boardId);
+}
+
+export function updateParticipantReputation(id: string, reputation: number) {
+  db.prepare('UPDATE participants SET reputation=?, updated_at=? WHERE id=?').run(reputation, Date.now(), id);
+  return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
+}
+
+export function upsertPolicyAssignment(input: { boardId: string; policyId: string; participants: string[]; weightingMode: string; quorum: number }) {
+  const ts = Date.now();
+  const existing = db.prepare('SELECT id FROM policy_assignments WHERE board_id=? AND policy_id=?').get(input.boardId, input.policyId) as any;
+  if (existing) {
+    db.prepare('UPDATE policy_assignments SET participants_json=?, weighting_mode=?, quorum=?, updated_at=? WHERE board_id=? AND policy_id=?')
+      .run(JSON.stringify(input.participants), input.weightingMode, input.quorum, ts, input.boardId, input.policyId);
+  } else {
+    db.prepare('INSERT INTO policy_assignments(id,board_id,policy_id,participants_json,weighting_mode,quorum,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(nanoid(), input.boardId, input.policyId, JSON.stringify(input.participants), input.weightingMode, input.quorum, ts, ts);
+  }
+  return db.prepare('SELECT * FROM policy_assignments WHERE board_id=? AND policy_id=?').get(input.boardId, input.policyId);
+}
+
+export function getPolicyAssignment(boardId: string, policyId: string) {
+  return db.prepare('SELECT * FROM policy_assignments WHERE board_id=? AND policy_id=?').get(boardId, policyId) as any;
+}
+
+export function submitVote(input: { boardId: string; runId: string; participantId: string; decision: string; confidence: number; rationale: string; idempotencyKey: string }) {
+  const participant = db.prepare('SELECT * FROM participants WHERE id=?').get(input.participantId) as any;
+  if (!participant) throw new Error('participant not found');
+  const key = `${input.runId}:${input.participantId}:${input.idempotencyKey}`;
+  const existing = db.prepare('SELECT * FROM votes WHERE unique_key=? LIMIT 1').get(key) as any;
+  if (existing) return existing;
+  const id = nanoid();
+  const ts = Date.now();
+  db.prepare('INSERT INTO votes(id,board_id,run_id,participant_id,decision,confidence,rationale,weight_snapshot,reputation_snapshot,created_at,unique_key) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(id, input.boardId, input.runId, input.participantId, input.decision, input.confidence, input.rationale, participant.weight, participant.reputation, ts, key);
+  return db.prepare('SELECT * FROM votes WHERE id=?').get(id);
+}
+
+export function listVotes(runId: string) {
+  return db.prepare('SELECT * FROM votes WHERE run_id=? ORDER BY created_at ASC').all(runId);
+}
+
+export function aggregateVotes(runId: string, quorum: number) {
+  const votes = listVotes(runId) as any[];
+  const totalWeight = votes.reduce((s, v) => s + Number(v.weight_snapshot || 0), 0);
+  const yesWeight = votes.filter(v => String(v.decision).toUpperCase() === 'YES').reduce((s, v) => s + Number(v.weight_snapshot || 0), 0);
+  const ratio = totalWeight > 0 ? yesWeight / totalWeight : 0;
+  return { votes, totalWeight, yesWeight, ratio, passed: ratio >= quorum };
 }

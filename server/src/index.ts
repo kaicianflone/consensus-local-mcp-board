@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { createBoard, createWorkflow, getBoard, getRun, getWorkflow, getWorkflowRunByRunId, listBoards, listEvents, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, updateWorkflow } from './db/store.js';
+import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipantReputation, updateWorkflow, upsertPolicyAssignment } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
@@ -136,6 +136,101 @@ app.get('/api/mcp/runs/:id', (req, res) => {
   const run = getRun(req.params.id);
   if (!run) return res.status(404).json(err('RUN_NOT_FOUND', 'Run not found'));
   res.json({ run, events: listEvents({ runId: req.params.id, limit: 500 }) });
+});
+
+// Agent connect + participation APIs
+app.post('/api/agents/connect', (req, res) => {
+  try {
+    const body = z.object({ name: z.string().min(1), scopes: z.array(z.string()).optional(), boards: z.array(z.string()).optional(), workflows: z.array(z.string()).optional() }).parse(req.body || {});
+    res.json({ agent: connectAgent(body) });
+  } catch (e: any) {
+    res.status(400).json(err('INVALID_INPUT', 'Invalid agent connect payload', e?.message));
+  }
+});
+
+app.get('/api/agents', (_req, res) => {
+  res.json({ agents: listAgents() });
+});
+
+app.post('/api/participants', (req, res) => {
+  try {
+    const body = z.object({ boardId: z.string().min(1), subjectType: z.enum(['agent', 'human']), subjectId: z.string().min(1), role: z.string().optional(), weight: z.number().optional(), reputation: z.number().optional(), metadata: z.record(z.any()).optional() }).parse(req.body || {});
+    res.json({ participant: createParticipant(body as any) });
+  } catch (e: any) {
+    res.status(400).json(err('INVALID_INPUT', 'Invalid participant payload', e?.message));
+  }
+});
+
+app.get('/api/participants', (req, res) => {
+  const boardId = String(req.query.boardId || '');
+  if (!boardId) return res.status(400).json(err('INVALID_INPUT', 'boardId is required'));
+  res.json({ participants: listParticipants(boardId) });
+});
+
+app.patch('/api/participants/:id/reputation', (req, res) => {
+  try {
+    const body = z.object({ reputation: z.number().min(0).max(1) }).parse(req.body || {});
+    res.json({ participant: updateParticipantReputation(req.params.id, body.reputation) });
+  } catch (e: any) {
+    res.status(400).json(err('INVALID_INPUT', 'Invalid reputation payload', e?.message));
+  }
+});
+
+app.post('/api/policies/assign', (req, res) => {
+  try {
+    const body = z.object({ boardId: z.string().min(1), policyId: z.string().min(1), participants: z.array(z.string()), weightingMode: z.enum(['static', 'reputation', 'hybrid']).default('hybrid'), quorum: z.number().min(0).max(1) }).parse(req.body || {});
+    res.json({ assignment: upsertPolicyAssignment(body) });
+  } catch (e: any) {
+    res.status(400).json(err('INVALID_INPUT', 'Invalid policy assignment payload', e?.message));
+  }
+});
+
+app.get('/api/policies/:boardId/:policyId', (req, res) => {
+  const assignment = getPolicyAssignment(req.params.boardId, req.params.policyId);
+  if (!assignment) return res.status(404).json(err('POLICY_NOT_FOUND', 'Policy assignment not found'));
+  res.json({ assignment });
+});
+
+app.post('/api/votes', (req, res) => {
+  try {
+    const body = z.object({ boardId: z.string().min(1), runId: z.string().min(1), participantId: z.string().min(1), decision: z.enum(['YES', 'NO', 'REWRITE']), confidence: z.number().min(0).max(1), rationale: z.string().min(1), idempotencyKey: z.string().min(1) }).parse(req.body || {});
+    const v = submitVote(body as any);
+    const run = getRun(body.runId) as any;
+    const policyId = (run?.meta_json ? JSON.parse(String(run.meta_json)).policy_id : null) || 'default';
+    const policy = getPolicyAssignment(body.boardId, policyId);
+    const quorum = Number(policy?.quorum ?? 0.6);
+    const agg = aggregateVotes(body.runId, quorum);
+    res.json({ vote: v, aggregate: agg });
+  } catch (e: any) {
+    res.status(400).json(err('INVALID_INPUT', 'Invalid vote payload', e?.message));
+  }
+});
+
+app.post('/api/agent/trigger', async (req, res) => {
+  try {
+    const key = String(req.headers['x-agent-key'] || '');
+    const agent = key ? getAgentByApiKey(key) : null;
+    if (!agent) return res.status(401).json(err('UNAUTHORIZED', 'Invalid or missing x-agent-key'));
+
+    const body = z.object({ workflowId: z.string().optional(), boardId: z.string().optional(), tool: z.string().optional(), input: z.any().optional() }).parse(req.body || {});
+
+    if (body.workflowId) {
+      const wf = getWorkflow(body.workflowId);
+      if (!wf) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
+      const definition = JSON.parse(wf.definition_json || '{}');
+      const out = await runWorkflow(definition, wf.id);
+      return res.json({ ok: true, via: 'workflow', agent: { id: agent.id, name: agent.name }, ...out });
+    }
+
+    if (body.tool) {
+      const out = await invokeTool(body.tool as any, body.input ?? {});
+      return res.json({ ok: true, via: 'tool', agent: { id: agent.id, name: agent.name }, out });
+    }
+
+    return res.status(400).json(err('INVALID_INPUT', 'Provide workflowId or tool'));
+  } catch (e: any) {
+    res.status(500).json(err('AGENT_TRIGGER_FAILED', 'Agent trigger failed', e?.message));
+  }
 });
 
 app.get('/api/workflows', (_req, res) => {
