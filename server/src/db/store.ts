@@ -108,3 +108,20 @@ export function listWorkflowRuns(workflowId: string, limit = 100) {
 export function getWorkflowRunByRunId(runId: string) {
   return db.prepare('SELECT * FROM workflow_runs WHERE run_id=? LIMIT 1').get(runId) as any;
 }
+
+export function upsertWorkflowRunLink(runId: string, workflowId: string, engine: string, externalRunId?: string | null, cursor?: unknown) {
+  const existing = db.prepare('SELECT run_id FROM workflow_run_links WHERE run_id=?').get(runId) as any;
+  const ts = Date.now();
+  const cursorJson = cursor === undefined ? null : JSON.stringify(redact(cursor as any));
+  if (existing) {
+    db.prepare('UPDATE workflow_run_links SET workflow_id=?, engine=?, external_run_id=?, cursor_json=?, updated_at=? WHERE run_id=?')
+      .run(workflowId, engine, externalRunId ?? null, cursorJson, ts, runId);
+  } else {
+    db.prepare('INSERT INTO workflow_run_links(run_id,workflow_id,engine,external_run_id,cursor_json,updated_at) VALUES (?,?,?,?,?,?)')
+      .run(runId, workflowId, engine, externalRunId ?? null, cursorJson, ts);
+  }
+}
+
+export function getWorkflowRunLink(runId: string) {
+  return db.prepare('SELECT * FROM workflow_run_links WHERE run_id=? LIMIT 1').get(runId) as any;
+}
