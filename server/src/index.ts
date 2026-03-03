@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipantReputation, updateWorkflow, upsertPolicyAssignment } from './db/store.js';
+import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
@@ -63,6 +63,7 @@ function validateWorkflowDefinition(definition: any) {
       if (Number.isNaN(q) || q < 0 || q > 1) return `Guard index ${i}: quorum must be between 0 and 1`;
       const r = Number(c.riskThreshold ?? 0.7);
       if (Number.isNaN(r) || r < 0 || r > 1) return `Guard index ${i}: riskThreshold must be between 0 and 1`;
+      if (c.policyBinding && !['explicit', 'auto'].includes(String(c.policyBinding))) return `Guard index ${i}: policyBinding must be explicit or auto`;
     }
 
     if (t === 'hitl') {
@@ -167,12 +168,19 @@ app.get('/api/participants', (req, res) => {
   res.json({ participants: listParticipants(boardId) });
 });
 
-app.patch('/api/participants/:id/reputation', (req, res) => {
+app.patch('/api/participants/:id', (req, res) => {
   try {
-    const body = z.object({ reputation: z.number().min(0).max(1) }).parse(req.body || {});
-    res.json({ participant: updateParticipantReputation(req.params.id, body.reputation) });
+    const body = z.object({
+      reputation: z.number().min(0).max(1).optional(),
+      weight: z.number().min(0).max(100).optional(),
+      role: z.string().optional(),
+      status: z.enum(['active', 'disabled']).optional()
+    }).parse(req.body || {});
+    const participant = updateParticipant(req.params.id, body);
+    if (!participant) return res.status(404).json(err('PARTICIPANT_NOT_FOUND', 'Participant not found'));
+    res.json({ participant });
   } catch (e: any) {
-    res.status(400).json(err('INVALID_INPUT', 'Invalid reputation payload', e?.message));
+    res.status(400).json(err('INVALID_INPUT', 'Invalid participant update payload', e?.message));
   }
 });
 
@@ -212,17 +220,27 @@ app.post('/api/agent/trigger', async (req, res) => {
     const agent = key ? getAgentByApiKey(key) : null;
     if (!agent) return res.status(401).json(err('UNAUTHORIZED', 'Invalid or missing x-agent-key'));
 
+    const scopes: string[] = JSON.parse(String(agent.scopes_json || '[]'));
+    const boards: string[] = JSON.parse(String(agent.boards_json || '[]'));
+    const workflows: string[] = JSON.parse(String(agent.workflows_json || '[]'));
+
     const body = z.object({ workflowId: z.string().optional(), boardId: z.string().optional(), tool: z.string().optional(), input: z.any().optional() }).parse(req.body || {});
 
     if (body.workflowId) {
+      if (!scopes.includes('workflow.run')) return res.status(403).json(err('FORBIDDEN', 'Missing scope workflow.run'));
+      if (workflows.length && !workflows.includes(body.workflowId)) return res.status(403).json(err('FORBIDDEN', 'Workflow not in agent allowlist'));
       const wf = getWorkflow(body.workflowId);
       if (!wf) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
       const definition = JSON.parse(wf.definition_json || '{}');
+      const wfBoard = String(definition?.boardId || 'workflow-system');
+      if (boards.length && !boards.includes(wfBoard)) return res.status(403).json(err('FORBIDDEN', 'Board not in agent allowlist'));
       const out = await runWorkflow(definition, wf.id);
       return res.json({ ok: true, via: 'workflow', agent: { id: agent.id, name: agent.name }, ...out });
     }
 
     if (body.tool) {
+      if (!(scopes.includes(body.tool) || scopes.includes('tool.*'))) return res.status(403).json(err('FORBIDDEN', `Missing scope ${body.tool}`));
+      if (body.boardId && boards.length && !boards.includes(body.boardId)) return res.status(403).json(err('FORBIDDEN', 'Board not in agent allowlist'));
       const out = await invokeTool(body.tool as any, body.input ?? {});
       return res.json({ ok: true, via: 'tool', agent: { id: agent.id, name: agent.name }, out });
     }

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { approveWorkflowRun, assignPolicy, connectAgent, createParticipant, createWorkflow, getWorkflow, getWorkflows, listAgents, listParticipants, runWorkflow, submitConsensusVote, updateWorkflow } from '../lib/api';
+import { approveWorkflowRun, assignPolicy, connectAgent, createParticipant, createWorkflow, getWorkflow, getWorkflows, listAgents, listParticipants, runWorkflow, submitConsensusVote, updateParticipant, updateWorkflow } from '../lib/api';
 
 type NodeType = 'trigger' | 'agent' | 'guard' | 'hitl' | 'action';
 type WorkflowNode = { id: string; type: NodeType; label: string; config: Record<string, any> };
@@ -37,7 +37,7 @@ const PALETTE: { type: NodeType; label: string }[] = [
 
 function defaults(type: NodeType) {
   if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, toolAccess: 'restricted' };
-  if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, assignedAgents: ['default-agent'], weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
+  if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, policyBinding: 'explicit', assignedAgents: ['default-agent'], weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
   if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', timeoutSec: 900, weightMode: 'weighted', requiredVotes: 2 };
   if (type === 'trigger') return { source: 'github.pr.opened', provider: 'github-mcp', repo: '', branch: 'main', channel: 'slack', chatType: 'group', matchText: '', fromUsers: '' };
   return { action: 'noop' };
@@ -154,7 +154,7 @@ export default function WorkflowsPage() {
           <button onClick={async()=>{ if(!agents[0]) return; await createParticipant({ boardId: boardForParticipants, subjectType:'agent', subjectId: agents[0].id, role:'voter', weight:1, reputation:0.6 }); await assignPolicy({ boardId: boardForParticipants, policyId:'default', participants:[agents[0].id], weightingMode:'hybrid', quorum:0.6 }); await refreshActors(); }}>Add as Participant + Assign Policy</button>
         </div>
         <div className='small'>Agents: {agents.length} · Participants: {participants.length}</div>
-        {participants.slice(0,5).map((p:any)=><div key={p.id} className='row'><span className='badge'>{p.subject_type}</span><span>{p.subject_id}</span><span className='small'>w={p.weight} rep={p.reputation}</span><button onClick={async()=>{ await submitConsensusVote({ boardId: p.board_id, runId: runs[0]?.run_id || 'demo-run', participantId: p.id, decision:'YES', confidence:0.8, rationale:'UI test vote', idempotencyKey:`ui-${Date.now()}` }); }}>Vote YES</button></div>)}
+        {participants.slice(0,8).map((p:any)=><div key={p.id} className='row'><span className='badge'>{p.subject_type}</span><span>{p.subject_id}</span><span className='small'>w={p.weight} rep={p.reputation}</span><input style={{width:70}} defaultValue={p.weight} onBlur={async(e)=>{ const v=Number(e.target.value); if(!Number.isNaN(v)) await updateParticipant(p.id,{weight:v}); }} /><input style={{width:70}} defaultValue={p.reputation} onBlur={async(e)=>{ const v=Number(e.target.value); if(!Number.isNaN(v)) await updateParticipant(p.id,{reputation:v}); }} /><button onClick={async()=>{ await submitConsensusVote({ boardId: p.board_id, runId: runs[0]?.run_id || 'demo-run', participantId: p.id, decision:'YES', confidence:0.8, rationale:'UI test vote', idempotencyKey:`ui-${Date.now()}` }); }}>Vote YES</button></div>)}
       </div>
 
       <div className='grid workflows'>

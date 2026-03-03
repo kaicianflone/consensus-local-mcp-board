@@ -32,5 +32,6 @@ export async function connectAgent(input:{name:string;scopes?:string[];boards?:s
 export async function listAgents(){ return fetch(`${API}/agents`).then(j); }
 export async function createParticipant(input:any){ return fetch(`${API}/participants`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}).then(j); }
 export async function listParticipants(boardId:string){ return fetch(`${API}/participants?boardId=${encodeURIComponent(boardId)}`).then(j); }
+export async function updateParticipant(id:string, patch:any){ return fetch(`${API}/participants/${id}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(patch)}).then(j); }
 export async function assignPolicy(input:any){ return fetch(`${API}/policies/assign`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}).then(j); }
 export async function submitConsensusVote(input:any){ return fetch(`${API}/votes`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}).then(j); }
