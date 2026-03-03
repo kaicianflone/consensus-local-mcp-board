@@ -147,7 +147,10 @@ function ensureRun(boardId: string, workflowId: string, runId?: string) {
 export async function executeLocalFlow(definition: any, workflowId: string, opts: RunOpts = {}, link?: { engine: string; externalRunId?: string | null }) {
   const boardId = String(definition?.boardId || 'workflow-system');
   const runId = ensureRun(boardId, workflowId, opts.runId);
-  upsertWorkflowRunLink(runId, workflowId, link?.engine || 'local', link?.externalRunId || null, { startIndex: opts.startIndex || 0 });
+  const existingLink = getWorkflowRunLink(runId);
+  const engine = link?.engine || existingLink?.engine || 'local';
+  const externalRunId = link?.externalRunId || existingLink?.external_run_id || null;
+  upsertWorkflowRunLink(runId, workflowId, engine, externalRunId, { startIndex: opts.startIndex || 0 });
 
   const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
   const startIndex = opts.startIndex ?? 0;
@@ -155,7 +158,8 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
 
   appendEvent(boardId, runId, startIndex === 0 ? 'WORKFLOW_STARTED' : 'WORKFLOW_RESUMED', {
     workflow_id: workflowId,
-    engine: link?.engine || 'local',
+    engine,
+    external_run_id: externalRunId,
     node_count: nodes.length,
     start_index: startIndex
   });
@@ -165,6 +169,9 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
     const startedAt = Date.now();
     appendEvent(boardId, runId, 'WORKFLOW_NODE_STARTED', {
       workflow_id: workflowId,
+      engine,
+      external_run_id: externalRunId,
+      external_step_id: externalRunId ? `${externalRunId}:step:${i}:start` : null,
       node_index: i,
       node_id: node.id,
       node_type: node.type,
@@ -177,6 +184,9 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
 
       appendEvent(boardId, runId, 'WORKFLOW_NODE_EXECUTED', {
         workflow_id: workflowId,
+        engine,
+        external_run_id: externalRunId,
+        external_step_id: externalRunId ? `${externalRunId}:step:${i}:done` : null,
         node_index: i,
         node_id: node.id,
         node_type: node.type,
@@ -187,18 +197,24 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
       if (output?.pause === true && node.type === 'hitl') {
         appendEvent(boardId, runId, 'WORKFLOW_WAITING_HITL', {
           workflow_id: workflowId,
+          engine,
+          external_run_id: externalRunId,
+          external_step_id: externalRunId ? `${externalRunId}:step:${i}:wait` : null,
           node_index: i,
           node_id: node.id,
           reason: 'Human approval required'
         });
         updateRunStatus(runId, 'WAITING_HUMAN');
         updateWorkflowRunStatus(runId, 'WAITING_HUMAN');
-        upsertWorkflowRunLink(runId, workflowId, link?.engine || 'local', link?.externalRunId || null, { waitNodeIndex: i, contextKeys: Object.keys(context) });
+        upsertWorkflowRunLink(runId, workflowId, engine, externalRunId, { waitNodeIndex: i, contextKeys: Object.keys(context) });
         return { runId, boardId, paused: true, waitNodeIndex: i };
       }
     } catch (error: any) {
       appendEvent(boardId, runId, 'WORKFLOW_NODE_FAILED', {
         workflow_id: workflowId,
+        engine,
+        external_run_id: externalRunId,
+        external_step_id: externalRunId ? `${externalRunId}:step:${i}:fail` : null,
         node_index: i,
         node_id: node.id,
         node_type: node.type,
@@ -210,7 +226,7 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
     }
   }
 
-  appendEvent(boardId, runId, 'WORKFLOW_COMPLETED', { workflow_id: workflowId, executed: nodes.length });
+  appendEvent(boardId, runId, 'WORKFLOW_COMPLETED', { workflow_id: workflowId, engine, external_run_id: externalRunId, executed: nodes.length });
   updateRunStatus(runId, 'APPROVED');
   updateWorkflowRunStatus(runId, 'APPROVED');
   return { runId, boardId, completed: true };
