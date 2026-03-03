@@ -5,6 +5,25 @@ import { approveWorkflowRun, createWorkflow, getWorkflow, getWorkflows, runWorkf
 type NodeType = 'trigger' | 'agent' | 'guard' | 'hitl' | 'action';
 type WorkflowNode = { id: string; type: NodeType; label: string; config: Record<string, any> };
 
+const CHAT_CHANNELS = [
+  { id: 'slack', icon: '💬', label: 'Slack' },
+  { id: 'discord', icon: '🟣', label: 'Discord' },
+  { id: 'telegram', icon: '📨', label: 'Telegram' },
+  { id: 'whatsapp', icon: '🟢', label: 'WhatsApp' },
+  { id: 'signal', icon: '📶', label: 'Signal' },
+  { id: 'googlechat', icon: '🟩', label: 'Google Chat' },
+  { id: 'irc', icon: '🧵', label: 'IRC' },
+  { id: 'imessage', icon: '💙', label: 'iMessage' }
+] as const;
+
+const TRIGGER_SOURCES = [
+  { id: 'github.pr.opened', icon: '🐙', label: 'GitHub PR Opened (MCP/GitHub)' },
+  { id: 'github.pr.updated', icon: '🐙', label: 'GitHub PR Updated' },
+  { id: 'github.pr.review_requested', icon: '🐙', label: 'GitHub PR Review Requested' },
+  { id: 'manual', icon: '🖱️', label: 'Manual' },
+  { id: 'webhook', icon: '🪝', label: 'Webhook' }
+] as const;
+
 const PALETTE: { type: NodeType; label: string }[] = [
   { type: 'trigger', label: 'Trigger' },
   { type: 'agent', label: 'Agent (ai-sdk)' },
@@ -16,8 +35,8 @@ const PALETTE: { type: NodeType; label: string }[] = [
 function defaults(type: NodeType) {
   if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, toolAccess: 'restricted' };
   if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, assignedAgents: ['default-agent'], weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
-  if (type === 'hitl') return { channel: 'whatsapp', promptMode: 'yes-no', timeoutSec: 900 };
-  if (type === 'trigger') return { mode: 'manual' };
+  if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', timeoutSec: 900, weightMode: 'weighted', requiredVotes: 2 };
+  if (type === 'trigger') return { source: 'github.pr.opened', provider: 'github-mcp', repo: '', branch: 'main' };
   return { action: 'noop' };
 }
 
@@ -157,9 +176,32 @@ export default function WorkflowsPage() {
                   <label>Temperature <input type='number' step='0.1' value={selected.config.temperature} onChange={(e) => updateConfig('temperature', Number(e.target.value))} /></label>
                 </div>
               )}
+              {selected.type === 'trigger' && (
+                <div className='stack'>
+                  <label>Source
+                    <select value={selected.config.source || 'manual'} onChange={(e) => updateConfig('source', e.target.value)}>
+                      {TRIGGER_SOURCES.map((s) => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+                    </select>
+                  </label>
+                  <label>Provider <input value={selected.config.provider || 'github-mcp'} onChange={(e) => updateConfig('provider', e.target.value)} /></label>
+                  <label>Repo <input value={selected.config.repo || ''} onChange={(e) => updateConfig('repo', e.target.value)} placeholder='owner/repo' /></label>
+                  <label>Branch <input value={selected.config.branch || 'main'} onChange={(e) => updateConfig('branch', e.target.value)} /></label>
+                </div>
+              )}
               {selected.type === 'hitl' && (
                 <div className='stack'>
-                  <label>Channel <input value={selected.config.channel} onChange={(e) => updateConfig('channel', e.target.value)} /></label>
+                  <label>Channel
+                    <select value={selected.config.channel || 'slack'} onChange={(e) => updateConfig('channel', e.target.value)}>
+                      {CHAT_CHANNELS.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                    </select>
+                  </label>
+                  <label>Prompt Mode
+                    <select value={selected.config.promptMode || 'yes-no'} onChange={(e) => updateConfig('promptMode', e.target.value)}>
+                      <option value='yes-no'>YES / NO</option>
+                      <option value='weighted-vote'>Weighted Vote</option>
+                    </select>
+                  </label>
+                  <label>Required Votes <input type='number' value={selected.config.requiredVotes ?? 2} onChange={(e) => updateConfig('requiredVotes', Number(e.target.value))} /></label>
                   <label>Timeout (sec) <input type='number' value={selected.config.timeoutSec} onChange={(e) => updateConfig('timeoutSec', Number(e.target.value))} /></label>
                 </div>
               )}
