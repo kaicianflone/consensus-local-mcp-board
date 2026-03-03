@@ -89,10 +89,10 @@ function validateWorkflowDefinition(definition: any) {
   return null;
 }
 
-// CORS for local web dev (Vite on 5173)
+// CORS for local web dev
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin === 'http://127.0.0.1:5173' || origin === 'http://localhost:5173') {
+  if (origin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
   }
