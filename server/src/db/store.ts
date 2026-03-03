@@ -105,6 +105,17 @@ export function listWorkflowRuns(workflowId: string, limit = 100) {
   return db.prepare('SELECT * FROM workflow_runs WHERE workflow_id=? ORDER BY created_at DESC LIMIT ?').all(workflowId, limit);
 }
 
+export function listWorkflowRunsDetailed(workflowId: string, limit = 100) {
+  return db.prepare(`
+    SELECT wr.*, l.engine, l.external_run_id, l.cursor_json, l.updated_at as link_updated_at
+    FROM workflow_runs wr
+    LEFT JOIN workflow_run_links l ON l.run_id = wr.run_id
+    WHERE wr.workflow_id=?
+    ORDER BY wr.created_at DESC
+    LIMIT ?
+  `).all(workflowId, limit);
+}
+
 export function getWorkflowRunByRunId(runId: string) {
   return db.prepare('SELECT * FROM workflow_runs WHERE run_id=? LIMIT 1').get(runId) as any;
 }

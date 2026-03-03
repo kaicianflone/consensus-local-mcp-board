@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { createBoard, createWorkflow, getBoard, getRun, getWorkflow, getWorkflowRunByRunId, listBoards, listEvents, listRuns, listWorkflowRuns, listWorkflows, searchEvents, updateWorkflow } from './db/store.js';
+import { createBoard, createWorkflow, getBoard, getRun, getWorkflow, getWorkflowRunByRunId, listBoards, listEvents, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, updateWorkflow } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
@@ -77,7 +77,7 @@ app.post('/api/workflows', (req, res) => {
 app.get('/api/workflows/:id', (req, res) => {
   const workflow = getWorkflow(req.params.id);
   if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
-  res.json({ workflow, runs: listWorkflowRuns(req.params.id, 200) });
+  res.json({ workflow, runs: listWorkflowRunsDetailed(req.params.id, 200) });
 });
 
 app.put('/api/workflows/:id', (req, res) => {

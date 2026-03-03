@@ -28,6 +28,7 @@ export default function WorkflowsPage() {
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [saved, setSaved] = useState<any[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
+  const [engineFilter, setEngineFilter] = useState<'all'|'devkit'|'local'>('all');
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
 
@@ -96,6 +97,13 @@ export default function WorkflowsPage() {
         <button onClick={saveWorkflow}>Save Workflow</button>
         <button onClick={executeWorkflow} disabled={!workflowId}>Run Workflow</button>
         <span className='small'>{workflowId ? `id: ${workflowId}` : 'not saved'}</span>
+        <label className='small'>Engine
+          <select value={engineFilter} onChange={(e)=>setEngineFilter(e.target.value as any)}>
+            <option value='all'>all</option>
+            <option value='devkit'>devkit</option>
+            <option value='local'>local</option>
+          </select>
+        </label>
       </div>
 
       <div className='grid workflows'>
@@ -121,7 +129,7 @@ export default function WorkflowsPage() {
           ))}
 
           <h3>Runs</h3>
-          {runs.map((r:any)=><div key={r.id} className='row'><span className='badge'>{r.status}</span><Link to={`/boards/run/${r.run_id}`}>{r.run_id}</Link>{r.status==='WAITING_HUMAN' && <><button onClick={async()=>{await approveWorkflowRun(r.run_id,'YES','kai'); await loadWorkflow(workflowId!);}}>Approve</button><button onClick={async()=>{await approveWorkflowRun(r.run_id,'NO','kai'); await loadWorkflow(workflowId!);}}>Block</button></>}</div>)}
+          {runs.filter((r:any)=>engineFilter==='all' ? true : (r.engine||'local')===engineFilter).map((r:any)=><div key={r.id} className='row'><span className='badge'>{r.status}</span><span className='badge'>{r.engine || 'local'}</span><Link to={`/boards/run/${r.run_id}`}>{r.run_id}</Link>{r.external_run_id ? <span className='small'>ext: {r.external_run_id}</span> : null}{r.status==='WAITING_HUMAN' && <><button onClick={async()=>{await approveWorkflowRun(r.run_id,'YES','kai'); await loadWorkflow(workflowId!);}}>Approve</button><button onClick={async()=>{await approveWorkflowRun(r.run_id,'NO','kai'); await loadWorkflow(workflowId!);}}>Block</button></>}</div>)}
         </div>
 
         <div className='card'>
