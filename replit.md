@@ -1,6 +1,6 @@
 # consensus-local-mcp-board
 
-A local MCP (Model Context Protocol) board system with a React frontend and Express backend.
+A local MCP (Model Context Protocol) board system with a React frontend and Express backend. This Replit environment is configured as a **dev-only** setup for UX/UI iteration.
 
 ## Architecture
 
@@ -40,6 +40,7 @@ SQLite via `better-sqlite3`. Migrations are in `server/src/db/migrations/`. The 
 
 A stdio MCP server is available via `npm run mcp:dev` (not part of the main workflow).
 
-## Deployment
+## Notes
 
-Configured for autoscale deployment. Build: `npm run build`, Run: `node server/dist/index.js`.
+- This Replit is a dev environment for UI work only — no production deployment is configured here.
+- Production builds and deployment are handled separately outside of Replit.
