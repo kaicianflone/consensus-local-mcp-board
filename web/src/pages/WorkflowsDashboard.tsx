@@ -323,12 +323,13 @@ export default function WorkflowsDashboard() {
           />
         </div>
 
-        <div className="lg:col-span-3 flex flex-col">
-          <NodeSettings node={selected} onUpdate={handleUpdateConfig} boardId={boardId} isGroupChild={isGroupChild} />
-        </div>
-
-        <div className="lg:col-span-3 flex flex-col">
-          <EventTimeline />
+        <div className="lg:col-span-3 flex flex-col gap-4">
+          <div className="flex-1 min-h-[300px]">
+            <NodeSettings node={selected} onUpdate={handleUpdateConfig} boardId={boardId} isGroupChild={isGroupChild} />
+          </div>
+          <div className="flex-1 min-h-[300px]">
+            <EventTimeline />
+          </div>
         </div>
       </div>
 
