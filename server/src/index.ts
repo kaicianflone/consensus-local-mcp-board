@@ -492,18 +492,26 @@ app.get('/api/settings/adapters', (_req, res) => {
 app.post('/api/settings/adapters/install', async (req, res) => {
   try {
     const body = z.object({ adapter: z.string().min(1) }).parse(req.body || {});
+    console.log(`[adapter] Request to install: ${body.adapter}`);
     const pkg = VALID_ADAPTERS[body.adapter];
-    if (!pkg) return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}. Valid: ${Object.keys(VALID_ADAPTERS).join(', ')}`));
+    if (!pkg) {
+      console.error(`[adapter] Unknown adapter: ${body.adapter}`);
+      return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}. Valid: ${Object.keys(VALID_ADAPTERS).join(', ')}`));
+    }
 
-    const rootDir = path.resolve(process.cwd(), '..');
+    const rootDir = path.resolve(process.cwd()); // Changed to current directory to ensure it installs in server's node_modules if needed, or check workspace root
+    console.log(`[adapter] Installing ${pkg} in ${rootDir}...`);
+    
     let installOutput = '';
     let installed = false;
     try {
-      // Ensure 'chat' is installed first as requested by the user
-      execSync(`npm install chat ${pkg} 2>&1`, { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
+      // Use --no-save to avoid modifying package.json in dev-only iteration if desired, or just install
+      installOutput = execSync(`npm install chat ${pkg} 2>&1`, { cwd: rootDir, timeout: 90000, encoding: 'utf8' });
+      console.log(`[adapter] Install output: ${installOutput}`);
       installed = true;
     } catch (e: any) {
       installOutput = e?.stdout || e?.stderr || e?.message || 'Install failed';
+      console.error(`[adapter] Install failed: ${installOutput}`);
       installed = false;
     }
 
@@ -517,6 +525,7 @@ app.post('/api/settings/adapters/install', async (req, res) => {
       output: installOutput.slice(0, 2000),
     });
   } catch (e: any) {
+    console.error(`[adapter] Critical error:`, e);
     const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'ADAPTER_INSTALL_FAILED';
     res.status(toHttpStatus(code)).json(err(code, 'Failed to install adapter', e?.message));
   }
