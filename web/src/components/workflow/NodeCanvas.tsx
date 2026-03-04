@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, ChevronRight, Layers } from 'lucide-react';
+import { GripVertical, Trash2, ChevronRight, Layers, Shield } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { PALETTE, NODE_COLORS, NODE_ICON_COLORS, type NodeType } from './NodePalette';
@@ -80,7 +80,7 @@ interface SortableNodeProps {
   onDelete: (id: string) => void;
 }
 
-function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete }: SortableNodeProps) {
+function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete, hideDelete }: SortableNodeProps & { hideDelete?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
 
   const style = {
@@ -114,17 +114,19 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
             <Layers className="h-3.5 w-3.5 text-cyan-400" />
             <span className="text-xs font-medium text-cyan-400">{node.label}</span>
             <span className="text-[10px] text-muted-foreground ml-auto">{children.length} parallel</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(node.id);
-              }}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
+            {!hideDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(node.id);
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
           </div>
           <div className="flex gap-2 p-2">
             {children.map((child) => (
@@ -187,17 +189,19 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
           </div>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(node.id);
-          }}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        {!hideDelete && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(node.id);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
 
       {!isLast && (
@@ -233,6 +237,69 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
     }
   }
 
+  // Grouping logic for "Decision Firewall"
+  const renderedItems: React.ReactNode[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const nextNode = nodes[i + 1];
+
+    if (node.type === 'guard' && nextNode?.type === 'group' && nextNode.config?.linkedGuardId === node.id) {
+      // It's a firewall pair
+      renderedItems.push(
+        <div key={`firewall-${node.id}`} className="p-3 border-2 border-emerald-500/20 bg-emerald-500/[0.02] rounded-xl space-y-2 relative group/firewall mb-4">
+          <div className="flex items-center justify-between mb-1 px-1">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-emerald-500" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500/80">Decision Firewall</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/firewall:opacity-100 transition-opacity"
+              onClick={() => {
+                onDelete(node.id);
+                onDelete(nextNode.id);
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <SortableNode
+            node={node}
+            isSelected={selectedId === node.id}
+            selectedId={selectedId}
+            isLast={false}
+            onSelect={onSelect}
+            onDelete={onDelete}
+            hideDelete
+          />
+          <SortableNode
+            node={nextNode}
+            isSelected={selectedId === nextNode.id}
+            selectedId={selectedId}
+            isLast={i + 1 === nodes.length - 1}
+            onSelect={onSelect}
+            onDelete={onDelete}
+            hideDelete
+          />
+        </div>
+      );
+      i++; // Skip next node
+    } else {
+      renderedItems.push(
+        <SortableNode
+          key={node.id}
+          node={node}
+          isSelected={selectedId === node.id}
+          selectedId={selectedId}
+          isLast={i === nodes.length - 1}
+          onSelect={onSelect}
+          onDelete={onDelete}
+        />
+      );
+    }
+  }
+
   return (
     <Card
       className="min-h-[300px] h-full flex flex-col"
@@ -260,17 +327,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={nodes.map((n) => n.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-0">
-                {nodes.map((node, i) => (
-                  <SortableNode
-                    key={node.id}
-                    node={node}
-                    isSelected={selectedId === node.id}
-                    selectedId={selectedId}
-                    isLast={i === nodes.length - 1}
-                    onSelect={onSelect}
-                    onDelete={onDelete}
-                  />
-                ))}
+                {renderedItems}
               </div>
             </SortableContext>
           </DndContext>
