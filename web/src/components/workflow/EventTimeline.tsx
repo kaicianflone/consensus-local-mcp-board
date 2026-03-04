@@ -80,7 +80,7 @@ export function EventTimeline() {
                         </div>
                       </div>
                       {/* Detailed info on hover - fixed positioning and styling */}
-                      <div className="fixed hidden group-hover/cell:block z-[9999] bg-popover text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-none text-[10px] font-mono whitespace-pre-wrap right-6 top-1/4 max-h-[60vh] overflow-y-auto shadow-emerald-500/10">
+                      <div className="fixed hidden group-hover/cell:block z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-none text-[10px] font-mono whitespace-pre-wrap right-6 top-1/4 max-h-[60vh] overflow-y-auto shadow-emerald-500/10">
                         <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center gap-2">
                           <Info className="h-3 w-3" /> Raw Event Data
                         </div>
