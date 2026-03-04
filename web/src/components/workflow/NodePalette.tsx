@@ -47,7 +47,7 @@ export function NodePalette({ onAdd }: NodePaletteProps) {
             draggable
             onDragStart={(e) => e.dataTransfer.setData('node-type', p.type)}
             onClick={() => onAdd(p.type)}
-            className="flex w-full items-center gap-3 rounded-md border border-border/50 bg-card px-3 py-2.5 text-sm transition-all hover:border-primary/50 hover:bg-accent cursor-grab active:cursor-grabbing"
+            className="flex w-full items-center gap-3 rounded-md border border-border/50 bg-card px-3 py-2.5 text-sm transition-all hover:border-primary/50 hover:bg-accent cursor-grab active:cursor-grabbing text-left"
           >
             <p.icon className={`h-4 w-4 shrink-0 ${p.color}`} />
             <span>{p.label}</span>
