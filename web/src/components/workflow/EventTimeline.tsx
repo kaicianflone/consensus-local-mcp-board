@@ -76,17 +76,13 @@ export function EventTimeline() {
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[10px] text-foreground/90 truncate font-medium">{summary}</span>
                         <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                           <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                           <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" title={fullInfo} />
                         </div>
                       </div>
                       {/* Detailed info on hover */}
-                      <div className="absolute hidden group-hover/cell:flex flex-col z-[100] bg-popover text-popover-foreground border border-border shadow-xl rounded-md p-3 w-80 max-h-[60vh] pointer-events-none text-[10px] font-mono right-full mr-2 top-0 animate-in fade-in zoom-in duration-200">
-                        <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-400 flex items-center gap-1.5 shrink-0">
-                          <Zap className="h-3 w-3" /> Raw Event Data
-                        </div>
-                        <div className="overflow-y-auto scrollbar-thin whitespace-pre-wrap break-words">
-                          {fullInfo}
-                        </div>
+                      <div className="fixed hidden group-hover/cell:block z-[100] bg-popover text-popover-foreground border border-border shadow-xl rounded-md p-3 max-w-xs break-words pointer-events-none text-[10px] font-mono whitespace-pre-wrap translate-x-4 -translate-y-2">
+                        <div className="font-bold border-b border-border mb-2 pb-1 text-primary">Raw Data</div>
+                        {fullInfo}
                       </div>
                     </td>
                   </tr>
