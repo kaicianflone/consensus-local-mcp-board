@@ -246,43 +246,50 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
     if (node.type === 'guard' && nextNode?.type === 'group' && nextNode.config?.linkedGuardId === node.id) {
       // It's a firewall pair
       renderedItems.push(
-        <div key={`firewall-${node.id}`} className="p-3 border-2 border-emerald-500/20 bg-emerald-500/[0.02] rounded-xl space-y-2 relative group/firewall mb-4">
-          <div className="flex items-center justify-between mb-1 px-1">
-            <div className="flex items-center gap-2">
-              <Shield className="h-4 w-4 text-emerald-500" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500/80">Decision Firewall</span>
+        <React.Fragment key={`firewall-${node.id}`}>
+          <div className="p-3 border-2 border-emerald-500/20 bg-emerald-500/[0.02] rounded-xl space-y-2 relative group/firewall">
+            <div className="flex items-center justify-between mb-1 px-1">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-emerald-500" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500/80">Decision Firewall</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/firewall:opacity-100 transition-opacity"
+                onClick={() => {
+                  onDelete(node.id);
+                  onDelete(nextNode.id);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/firewall:opacity-100 transition-opacity"
-              onClick={() => {
-                onDelete(node.id);
-                onDelete(nextNode.id);
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            <SortableNode
+              node={node}
+              isSelected={selectedId === node.id}
+              selectedId={selectedId}
+              isLast={false}
+              onSelect={onSelect}
+              onDelete={onDelete}
+              hideDelete
+            />
+            <SortableNode
+              node={nextNode}
+              isSelected={selectedId === nextNode.id}
+              selectedId={selectedId}
+              isLast={true}
+              onSelect={onSelect}
+              onDelete={onDelete}
+              hideDelete
+            />
           </div>
-          <SortableNode
-            node={node}
-            isSelected={selectedId === node.id}
-            selectedId={selectedId}
-            isLast={false}
-            onSelect={onSelect}
-            onDelete={onDelete}
-            hideDelete
-          />
-          <SortableNode
-            node={nextNode}
-            isSelected={selectedId === nextNode.id}
-            selectedId={selectedId}
-            isLast={i + 1 === nodes.length - 1}
-            onSelect={onSelect}
-            onDelete={onDelete}
-            hideDelete
-          />
-        </div>
+          {i + 1 < nodes.length - 1 && (
+            <div className="flex justify-center py-0.5">
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 rotate-90" />
+            </div>
+          )}
+        </React.Fragment>
       );
       i++; // Skip next node
     } else {
