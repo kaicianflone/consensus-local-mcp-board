@@ -191,8 +191,8 @@ export function EventTimeline() {
                         <div 
                           className="fixed z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left"
                           style={{ 
-                            left: hoveredEvent.x - 400, // Show to the left of the cursor (max-w-sm is 384px)
-                            top: Math.min(hoveredEvent.y - 50, window.innerHeight - 300) 
+                            left: hoveredEvent.x - 392, 
+                            top: Math.min(hoveredEvent.y - 48, window.innerHeight - 300) 
                           }}
                           onMouseEnter={() => {
                             if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
