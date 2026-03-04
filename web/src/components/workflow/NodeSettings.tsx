@@ -143,16 +143,7 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
                 rows={3}
               />
             </FieldLabel>
-            <FieldLabel>
-              Persona Mode
-              <Select value={draft.personaMode || 'auto'} onChange={(e) => set('personaMode', e.target.value)}>
-                <option value="auto">Auto (from board participants)</option>
-                <option value="manual">Manual (specify names)</option>
-              </Select>
-            </FieldLabel>
-            {draft.personaMode === 'manual' && (
-              <FieldLabel>Persona Names <Input value={draft.personaNames || ''} onChange={(e) => set('personaNames', e.target.value)} placeholder="security-reviewer, perf-analyst, code-quality" /></FieldLabel>
-            )}
+            <FieldLabel>Persona Names <Input value={draft.personaNames || ''} onChange={(e) => set('personaNames', e.target.value)} placeholder="security-reviewer, perf-analyst, code-quality" /></FieldLabel>
             <FieldLabel>Temperature <Input type="number" step="0.1" min="0" max="2" value={draft.temperature ?? 0} onChange={(e) => set('temperature', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>
               Tool Access
@@ -238,7 +229,7 @@ const GROUP_CHILD_TYPES: { type: NodeType; label: string }[] = [
 ];
 
 function childDefaults(type: NodeType): Record<string, any> {
-  if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, agentCount: 3, personaMode: 'auto', personaNames: '', systemPrompt: '' };
+  if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, agentCount: 3, personaNames: '', systemPrompt: '' };
   if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', requiredVotes: 2, timeoutSec: 900 };
   if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7 };
   return { action: 'noop' };
