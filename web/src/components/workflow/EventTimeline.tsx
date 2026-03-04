@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Clock, Shield, Users, Zap, Info } from 'lucide-react';
+import { Badge } from '../ui/badge';
 import { getEvents } from '../../lib/api';
 
 const EVENT_ICONS: Record<string, React.ElementType> = {
@@ -21,6 +22,26 @@ const EVENT_COLORS: Record<string, string> = {
 
 export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
+  const [widths, setWidths] = useState({ time: 100, type: 120, status: 80 });
+
+  const handleMouseDown = (e: React.MouseEvent, column: keyof typeof widths) => {
+    e.preventDefault();
+    const startX = e.pageX;
+    const startWidth = widths[column];
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(50, startWidth + (moveEvent.pageX - startX));
+      setWidths(prev => ({ ...prev, [column]: newWidth }));
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
 
   useEffect(() => {
     async function load() {
@@ -46,31 +67,59 @@ export function EventTimeline() {
           <table className="w-full text-left border-collapse table-fixed">
             <thead className="sticky top-0 bg-muted/50 backdrop-blur-sm z-10 border-b border-border/50">
               <tr>
-                <th className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground w-16">Time</th>
-                <th className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground w-20">Event</th>
-                <th className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground">Details</th>
+                <th style={{ width: widths.time }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header">
+                  Time
+                  <div 
+                    onMouseDown={(e) => handleMouseDown(e, 'time')}
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
+                  />
+                </th>
+                <th style={{ width: widths.type }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header">
+                  Type
+                  <div 
+                    onMouseDown={(e) => handleMouseDown(e, 'type')}
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
+                  />
+                </th>
+                <th style={{ width: widths.status }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header">
+                  Status
+                  <div 
+                    onMouseDown={(e) => handleMouseDown(e, 'status')}
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
+                  />
+                </th>
+                <th className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20">
+                  Details
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/30">
-              {events.map((event) => {
-                const Icon = EVENT_ICONS[event.type] || Clock;
-                const color = EVENT_COLORS[event.type] || 'text-muted-foreground';
+            <tbody className="divide-y divide-border/20">
+              {events.map((event: any) => {
                 let payload: any = {};
                 try { payload = event.payload_json ? JSON.parse(event.payload_json) : {}; } catch {}
-
+                
                 const summary = payload.step_label || payload.decision || payload.action || 'Completed';
                 const fullInfo = JSON.stringify(payload, null, 2);
+                const Icon = EVENT_ICONS[event.type] || Clock;
+                const color = EVENT_COLORS[event.type] || 'text-muted-foreground';
+                
+                const status = payload.status || payload.decision || payload.result || '-';
 
                 return (
                   <tr key={event.id} className="group hover:bg-accent/30 transition-colors border-b border-border/10 last:border-0">
-                    <td className="py-1.5 px-2 text-[10px] text-muted-foreground whitespace-nowrap align-top font-mono">
+                    <td className="py-1.5 px-2 text-[10px] text-muted-foreground whitespace-nowrap align-top font-mono border-r border-border/5">
                       {new Date(event.ts).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </td>
-                    <td className="py-1.5 px-2 align-top">
-                      <div className="flex items-center gap-1.5">
+                    <td className="py-1.5 px-2 align-top border-r border-border/5">
+                      <div className="flex items-center gap-1.5 overflow-hidden">
                         <Icon className={`h-3 w-3 shrink-0 ${color}`} />
                         <span className="text-[10px] font-medium truncate uppercase tracking-tight opacity-80">{event.type.replace('WORKFLOW_', '').replace('_EVALUATED', '')}</span>
                       </div>
+                    </td>
+                    <td className="py-1.5 px-2 align-top border-r border-border/5">
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-border/50 font-normal truncate max-w-full uppercase">
+                        {status}
+                      </Badge>
                     </td>
                     <td className="py-1.5 px-2 align-top relative group/cell">
                       <div className="flex items-center justify-between gap-2">
