@@ -19,7 +19,7 @@ const TEMPLATE_1 = {
   boardId: 'workflow-system',
   nodes: [
     { id: 'trigger-github-pr', type: 'trigger', label: 'GitHub PR Opened', config: { source: 'github.pr.opened', repo: '', branch: 'main' } },
-    { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, assignedAgents: ['merge-agent-1'], policyPack: 'merge-default' } },
+    { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, numberOfReviewers: 3, policyPack: 'merge-default' } },
     { id: 'parallel-review', type: 'group', label: 'Parallel Review', config: { children: [
       { id: 'agent-nlm-reviewers', type: 'agent', label: '3 N-LLM Reviewers', config: { agentCount: 3, personaMode: 'auto', model: 'gpt-4o-mini' } },
       { id: 'hitl-consensus', type: 'hitl', label: 'Consensus Vote', config: { channel: 'slack', requiredVotes: 2, mode: 'weighted-vote' } }

@@ -181,7 +181,7 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
             <FieldLabel>Quorum <Input type="number" step="0.01" min="0" max="1" value={draft.quorum ?? 0.7} onChange={(e) => set('quorum', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>Risk Threshold <Input type="number" step="0.01" min="0" max="1" value={draft.riskThreshold ?? 0.7} onChange={(e) => set('riskThreshold', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>HITL Threshold <Input type="number" step="0.01" min="0" max="1" value={draft.hitlThreshold ?? 0.7} onChange={(e) => set('hitlThreshold', Number(e.target.value))} /></FieldLabel>
-            <FieldLabel>Assigned Agents <Input value={(draft.assignedAgents || []).join(', ')} onChange={(e) => set('assignedAgents', e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean))} placeholder="agent-1, agent-2" /></FieldLabel>
+            <FieldLabel>Number of Reviewers <Input type="number" min="1" max="20" value={draft.numberOfReviewers ?? 3} onChange={(e) => set('numberOfReviewers', Number(e.target.value))} /></FieldLabel>
           </>
         )}
 
