@@ -21,10 +21,36 @@ This is a monorepo with three workspaces:
 ## UI Structure
 
 - **`web/src/components/ui/`** — Base UI components (Button, Card, Input, Select, Badge, Dialog, Separator)
-- **`web/src/components/layout/`** — Header with nav
-- **`web/src/components/workflow/`** — NodePalette, NodeCanvas (drag/drop/reorder), NodeSettings (edit/save/cancel), EventTimeline
+- **`web/src/components/layout/`** — Header with nav (includes Settings gear icon)
+- **`web/src/components/workflow/`** — NodePalette, NodeCanvas (drag/drop/reorder), NodeSettings (edit/save/cancel), EventTimeline, WorkflowToolbar
 - **`web/src/components/agents/`** — AgentsPanel (add/edit/cancel/save agents & participants)
-- **`web/src/pages/`** — WorkflowsDashboard (home), BoardsPage, BoardDetailPage, RunDetailPage
+- **`web/src/pages/`** — WorkflowsDashboard (home), SettingsPage, BoardsPage, BoardDetailPage, RunDetailPage
+
+## Settings & Credentials
+
+- **Settings page** (`/settings`) accessible via gear icon in header
+- Credentials stored encrypted server-side in SQLite (`credentials` table)
+- Encryption: AES-256-GCM with secret from `CREDENTIALS_SECRET` env var (or auto-generated for dev)
+- Credential store: `server/src/db/credentials.ts` (encrypt/decrypt/CRUD)
+- Supported providers: GitHub, Slack, OpenAI, Anthropic
+- API endpoints:
+  - `GET /api/settings/credentials` — list (provider + keyName only, never values)
+  - `POST /api/settings/credentials` — upsert `{provider, keyName, value}`
+  - `DELETE /api/settings/credentials/:provider/:keyName` — delete
+  - `GET /api/settings/credentials/:provider/status` — boolean flags per key
+
+## GitHub Webhook Integration
+
+- Webhook receiver: `POST /api/webhooks/github`
+- Verifies signatures using stored `github.webhook_secret` credential
+- Maps GitHub events to trigger sources (e.g., `pull_request:opened` → `github.pr.opened`)
+- Automatically matches and runs workflows whose trigger node source matches the incoming event
+- Webhook URL displayed on Settings page with copy button
+
+## Adapter Credential Resolution
+
+- `ai-sdk.ts` checks stored OpenAI credentials before falling back to `OPENAI_API_KEY` env var
+- `chat-sdk.ts` checks stored Slack credentials before falling back to `CHAT_WEBHOOK_URL` / `CHAT_WEBHOOK_BEARER` env vars
 
 ## Development
 
@@ -50,7 +76,7 @@ The Vite dev server proxies `/api/*` requests to the backend at `http://localhos
 
 ## Database
 
-SQLite via `better-sqlite3`. Migrations are in `server/src/db/migrations/`. The store is in `server/src/db/store.ts`.
+SQLite via `better-sqlite3`. Migrations are in `server/src/db/migrations/` (001 through 005). The store is in `server/src/db/store.ts`. Credentials module in `server/src/db/credentials.ts`.
 
 ## Notes
 

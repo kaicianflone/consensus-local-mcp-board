@@ -78,7 +78,6 @@ export default function WorkflowsDashboard() {
     setNodes(def.nodes || []);
     setRuns(d.runs || []);
     setSelectedId(null);
-    setShowSaved(false);
   }
 
   function addNode(type: NodeType) {

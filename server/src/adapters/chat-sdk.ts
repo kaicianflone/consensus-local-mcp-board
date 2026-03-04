@@ -1,3 +1,6 @@
+import { db } from '../db/store.js';
+import { getCredential } from '../db/credentials.js';
+
 type ChatPrompt = {
   boardId: string;
   runId: string;
@@ -10,13 +13,14 @@ type ChatPrompt = {
 const chatProvider = process.env.CHAT_PROVIDER ?? 'webhook';
 
 async function sendViaWebhook(message: string, meta: Record<string, unknown>) {
-  const url = process.env.CHAT_WEBHOOK_URL;
+  const url = getCredential(db, 'slack', 'webhook_url') || process.env.CHAT_WEBHOOK_URL;
   if (!url) {
-    return { delivered: false, provider: 'webhook', reason: 'CHAT_WEBHOOK_URL not configured' };
+    return { delivered: false, provider: 'webhook', reason: 'No webhook URL configured (check Settings or CHAT_WEBHOOK_URL env var)' };
   }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (process.env.CHAT_WEBHOOK_BEARER) headers.Authorization = `Bearer ${process.env.CHAT_WEBHOOK_BEARER}`;
+  const bearer = getCredential(db, 'slack', 'bot_token') || process.env.CHAT_WEBHOOK_BEARER;
+  if (bearer) headers.Authorization = `Bearer ${bearer}`;
 
   const r = await fetch(url, {
     method: 'POST',

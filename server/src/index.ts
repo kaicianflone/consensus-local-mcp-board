@@ -1,12 +1,14 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment } from './db/store.js';
+import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, db, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment, type WorkflowRecord } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
 import { humanApprovePost } from './api/human.approve.post.js';
 import { resumeWorkflow, runWorkflow } from './workflows/runner.js';
+import { upsertCredential, listCredentials, deleteCredential, getProviderStatus, getCredential } from './db/credentials.js';
+import crypto from 'node:crypto';
 
 const app = express();
 const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
@@ -102,7 +104,13 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '1mb' }));
+app.use((req, res, next) => {
+  if (req.path === '/api/webhooks/github') {
+    express.raw({ type: 'application/json', limit: '1mb' })(req, res, next);
+  } else {
+    express.json({ limit: '1mb' })(req, res, next);
+  }
+});
 
 // Verbose request logging
 app.use((req, res, next) => {
@@ -401,6 +409,124 @@ app.post('/api/mcp/tool/:name', async (req, res) => {
   } catch (e: any) {
     const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'TOOL_CALL_FAILED';
     res.status(toHttpStatus(code)).json(err(code, `Tool failed: ${req.params.name}`, e?.message));
+  }
+});
+
+// ── Credentials Settings API ──
+
+app.get('/api/settings/credentials', (_req, res) => {
+  try {
+    res.json({ credentials: listCredentials(db) });
+  } catch (e: any) {
+    res.status(500).json(err('CREDENTIALS_LIST_FAILED', 'Failed to list credentials', e?.message));
+  }
+});
+
+app.post('/api/settings/credentials', (req, res) => {
+  try {
+    const body = z.object({
+      provider: z.string().min(1),
+      keyName: z.string().min(1),
+      value: z.string().min(1)
+    }).parse(req.body || {});
+    const result = upsertCredential(db, body.provider, body.keyName, body.value);
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'CREDENTIALS_UPSERT_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to save credential', e?.message));
+  }
+});
+
+app.delete('/api/settings/credentials/:provider/:keyName', (req, res) => {
+  try {
+    const deleted = deleteCredential(db, req.params.provider, req.params.keyName);
+    if (!deleted) return res.status(404).json(err('CREDENTIAL_NOT_FOUND', 'Credential not found'));
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json(err('CREDENTIALS_DELETE_FAILED', 'Failed to delete credential', e?.message));
+  }
+});
+
+app.get('/api/settings/credentials/:provider/status', (req, res) => {
+  try {
+    res.json({ provider: req.params.provider, configured: getProviderStatus(db, req.params.provider) });
+  } catch (e: any) {
+    res.status(500).json(err('CREDENTIALS_STATUS_FAILED', 'Failed to get provider status', e?.message));
+  }
+});
+
+// ── GitHub Webhook Receiver ──
+
+function verifyGitHubSignature(payload: string, signature: string, secret: string): boolean {
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  } catch {
+    return false;
+  }
+}
+
+function mapGitHubEventToSource(event: string, action?: string): string | null {
+  const mapping: Record<string, string> = {
+    'pull_request:opened': 'github.pr.opened',
+    'pull_request:synchronize': 'github.pr.updated',
+    'pull_request:closed': 'github.pr.closed',
+    'push': 'github.commit',
+    'issues:opened': 'github.issue.opened',
+    'issues:closed': 'github.issue.closed',
+    'issue_comment:created': 'github.comment.created',
+  };
+  const key = action ? `${event}:${action}` : event;
+  return mapping[key] || mapping[event] || null;
+}
+
+app.post('/api/webhooks/github', async (req, res) => {
+  try {
+    const rawBody = typeof req.body === 'string' ? req.body : (Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body));
+    const signature = String(req.headers['x-hub-signature-256'] || '');
+    const webhookSecret = getCredential(db, 'github', 'webhook_secret');
+
+    if (webhookSecret) {
+      if (!signature) {
+        return res.status(401).json(err('MISSING_SIGNATURE', 'Webhook secret is configured but no X-Hub-Signature-256 header was provided'));
+      }
+      if (!verifyGitHubSignature(rawBody, signature, webhookSecret)) {
+        return res.status(401).json(err('INVALID_SIGNATURE', 'GitHub webhook signature verification failed'));
+      }
+    }
+
+    const event = String(req.headers['x-github-event'] || '');
+    const payload = typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body : JSON.parse(rawBody);
+    const action = payload?.action;
+    const source = mapGitHubEventToSource(event, action);
+
+    if (!source) {
+      return res.status(200).json({ ok: true, matched: false, reason: `Unhandled event: ${event}${action ? ':' + action : ''}` });
+    }
+
+    const workflows = listWorkflows(1000) as WorkflowRecord[];
+    const matched: Array<{ workflowId: string; runId?: string }> = [];
+
+    for (const wf of workflows) {
+      try {
+        const definition = JSON.parse(wf.definition_json || '{}');
+        const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+        const triggerNode = nodes[0];
+        if (!triggerNode || triggerNode.type !== 'trigger') continue;
+        const triggerSource = triggerNode.config?.source;
+        if (triggerSource !== source) continue;
+
+        const out = await runWorkflow(definition, wf.id);
+        matched.push({ workflowId: wf.id, runId: out?.runId });
+      } catch (e: any) {
+        console.error(`[webhook] Failed to run workflow ${wf.id}:`, e?.message);
+        matched.push({ workflowId: wf.id });
+      }
+    }
+
+    res.json({ ok: true, event, source, matched });
+  } catch (e: any) {
+    res.status(500).json(err('WEBHOOK_FAILED', 'Failed to process GitHub webhook', e?.message));
   }
 });
 

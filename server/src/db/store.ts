@@ -8,7 +8,7 @@ import { redact } from '../utils/redact.js';
 
 const dataDir = path.resolve(process.cwd(), 'data');
 fs.mkdirSync(dataDir, { recursive: true });
-const db = new Database(path.join(dataDir, 'local-board.db'));
+export const db = new Database(path.join(dataDir, 'local-board.db'));
 runMigrations(db);
 
 type Json = Record<string, unknown>;

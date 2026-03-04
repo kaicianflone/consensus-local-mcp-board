@@ -35,3 +35,14 @@ export async function listParticipants(boardId: string) { return fetch(`${API}/p
 export async function updateParticipant(id: string, patch: any) { return fetch(`${API}/participants/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }).then(j); }
 export async function assignPolicy(input: any) { return fetch(`${API}/policies/assign`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }).then(j); }
 export async function submitConsensusVote(input: any) { return fetch(`${API}/votes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }).then(j); }
+
+export async function getCredentialsList() { return fetch(`${API}/settings/credentials`).then(j); }
+export async function upsertCredential(provider: string, keyName: string, value: string) {
+  return fetch(`${API}/settings/credentials`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ provider, keyName, value }) }).then(j);
+}
+export async function deleteCredential(provider: string, keyName: string) {
+  return fetch(`${API}/settings/credentials/${encodeURIComponent(provider)}/${encodeURIComponent(keyName)}`, { method: 'DELETE' }).then(j);
+}
+export async function getProviderStatus(provider: string) {
+  return fetch(`${API}/settings/credentials/${encodeURIComponent(provider)}/status`).then(j);
+}

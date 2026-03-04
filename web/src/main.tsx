@@ -6,6 +6,7 @@ import WorkflowsDashboard from './pages/WorkflowsDashboard';
 import BoardsPage from './pages/BoardsPage';
 import BoardDetailPage from './pages/BoardDetailPage';
 import RunDetailPage from './pages/RunDetailPage';
+import SettingsPage from './pages/SettingsPage';
 import './styles.css';
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
             <Route path="/boards" element={<BoardsPage />} />
             <Route path="/boards/:boardId" element={<BoardDetailPage />} />
             <Route path="/boards/run/:runId" element={<RunDetailPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/workflows" element={<Navigate to="/" replace />} />
             <Route path="/local-board" element={<BoardsPage />} />
             <Route path="/local-board/:boardId" element={<BoardDetailPage />} />

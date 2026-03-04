@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Workflow, LayoutDashboard, ExternalLink } from 'lucide-react';
+import { Workflow, LayoutDashboard, ExternalLink, Settings } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 
@@ -42,16 +42,28 @@ export function Header() {
           </nav>
         </div>
 
-        <a
-          href="https://github.com/consensus-tools"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
-            <ExternalLink className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Open Source</span>
-          </Button>
-        </a>
+        <div className="flex items-center gap-1">
+          <Link to="/settings">
+            <Button
+              variant={location.pathname === '/settings' ? 'secondary' : 'ghost'}
+              size="sm"
+              className={cn('gap-2', location.pathname === '/settings' ? 'bg-secondary' : 'text-muted-foreground hover:text-foreground')}
+            >
+              <Settings className="h-4 w-4" />
+              <span className="hidden sm:inline">Settings</span>
+            </Button>
+          </Link>
+          <a
+            href="https://github.com/consensus-tools"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Open Source</span>
+            </Button>
+          </a>
+        </div>
       </div>
     </header>
   );

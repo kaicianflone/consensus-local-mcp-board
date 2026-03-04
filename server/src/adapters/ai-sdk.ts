@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import type { GuardEvaluateRequest } from '@local-mcp-board/shared';
+import { db } from '../db/store.js';
+import { getCredential } from '../db/credentials.js';
 
 export type AiVote = {
   evaluator: string;
@@ -27,7 +29,7 @@ function deterministicFallback(input: GuardEvaluateRequest): AiVote[] {
 }
 
 export async function evaluateWithAiSdk(input: GuardEvaluateRequest): Promise<AiVote[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getCredential(db, 'openai', 'api_key') || process.env.OPENAI_API_KEY;
   const model = process.env.AI_MODEL ?? 'gpt-4o-mini';
   if (!apiKey) return deterministicFallback(input);
 
