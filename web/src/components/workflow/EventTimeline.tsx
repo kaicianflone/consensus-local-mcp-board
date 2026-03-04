@@ -38,13 +38,13 @@ export function EventTimeline() {
   }, []);
 
   return (
-    <Card className="h-full">
+    <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <Clock className="h-4 w-4" /> Event Timeline
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 overflow-y-auto">
         {!events.length && (
           <p className="text-sm text-muted-foreground py-4 text-center">No events yet. Run a workflow to see activity.</p>
         )}

@@ -124,7 +124,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
 
   return (
     <Card
-      className="min-h-[300px]"
+      className="min-h-[300px] h-full flex flex-col"
       onDragOver={(e) => {
         e.preventDefault();
         e.currentTarget.classList.add('drag-over');
@@ -138,7 +138,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium">Flow Canvas</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 overflow-y-auto">
         {!nodes.length && (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed rounded-lg">
             <p className="text-sm">Drop nodes here or click from palette</p>

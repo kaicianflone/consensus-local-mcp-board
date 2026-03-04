@@ -81,7 +81,7 @@ export function AgentsPanel({ boardId }: AgentsPanelProps) {
   }
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -92,7 +92,7 @@ export function AgentsPanel({ boardId }: AgentsPanelProps) {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 flex-1 overflow-y-auto">
         <div className="text-xs text-muted-foreground">
           {agents.length} agent{agents.length !== 1 ? 's' : ''} · {participants.length} participant{participants.length !== 1 ? 's' : ''}
         </div>

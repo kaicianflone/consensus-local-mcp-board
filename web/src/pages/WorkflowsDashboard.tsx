@@ -157,12 +157,12 @@ export default function WorkflowsDashboard() {
         onLoad={loadWorkflow}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+        <div className="lg:col-span-2 flex flex-col">
           <NodePalette onAdd={addNode} />
         </div>
 
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-4 flex flex-col">
           <NodeCanvas
             nodes={nodes}
             selectedId={selectedId}
@@ -173,18 +173,18 @@ export default function WorkflowsDashboard() {
           />
         </div>
 
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 flex flex-col">
           <NodeSettings node={selected} onUpdate={handleUpdateConfig} />
         </div>
 
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 flex flex-col">
           <EventTimeline />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        <div className="lg:col-span-6">
-          <Card>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+        <div className="lg:col-span-6 flex flex-col">
+          <Card className="flex-1">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Play className="h-4 w-4" /> Workflow Runs
@@ -235,7 +235,7 @@ export default function WorkflowsDashboard() {
           </Card>
         </div>
 
-        <div className="lg:col-span-6">
+        <div className="lg:col-span-6 flex flex-col">
           <AgentsPanel boardId={boardId} />
         </div>
       </div>

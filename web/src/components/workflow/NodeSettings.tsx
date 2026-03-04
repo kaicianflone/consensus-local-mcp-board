@@ -51,13 +51,13 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
 
   if (!node) {
     return (
-      <Card>
+      <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Settings className="h-4 w-4" /> Node Settings
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1 overflow-y-auto">
           <p className="text-sm text-muted-foreground">Select a node to configure it.</p>
         </CardContent>
       </Card>
@@ -80,7 +80,7 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
   }
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -89,7 +89,7 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
           <Badge variant="secondary">{node.type}</Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 flex-1 overflow-y-auto">
         {node.type === 'trigger' && (
           <>
             <FieldLabel>
