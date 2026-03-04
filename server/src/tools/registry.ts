@@ -10,20 +10,23 @@ const EventSearchSchema = z.object({ query: z.string().default(''), limit: z.num
 
 async function runGuard(type: string, input: unknown) {
   const parsed = EvaluateInputSchema.parse(input);
+  const runId = parsed.runId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const guardType = normalizeGuardType(type === 'evaluate' ? parsed.action.type : type);
+
   return executeGuardEvaluate({
-    runId: parsed.runId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    runId,
     boardId: parsed.boardId,
-    guardType: normalizeGuardType(type === 'evaluate' ? parsed.action.type : type),
-    payload: parsed.action.payload,
+    guardType,
+    payload: (parsed.action.payload || {}) as Record<string, unknown>,
     policy: {
-      policyId: parsed.policyPack ?? 'default',
+      policyId: parsed.policyPack ?? guardType,
       version: 'v1',
       quorum: 0.7,
       riskThreshold: 0.7,
       hitlRequiredAboveRisk: 0.7,
       options: {}
     },
-    idempotencyKey: `${parsed.boardId}:${type}:${JSON.stringify(parsed.action.payload)}`
+    idempotencyKey: `${parsed.boardId}:${guardType}:${JSON.stringify(parsed.action.payload || {})}`
   });
 }
 

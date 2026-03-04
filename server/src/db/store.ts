@@ -11,6 +11,62 @@ fs.mkdirSync(dataDir, { recursive: true });
 export const db = new Database(path.join(dataDir, 'local-board.db'));
 runMigrations(db);
 
+const mirrorEnabled = process.env.CONSENSUS_TOOLS_MIRROR === '1';
+const mirrorDbPath = process.env.CONSENSUS_TOOLS_DB_PATH || '';
+let mirrorDb: any = null;
+
+function getMirrorDb() {
+  if (!mirrorEnabled || !mirrorDbPath) return null;
+  if (mirrorDb) return mirrorDb;
+  try {
+    mirrorDb = new Database(mirrorDbPath);
+    mirrorDb.pragma('journal_mode = WAL');
+    return mirrorDb;
+  } catch (e: any) {
+    console.warn('[mirror] unable to open consensus-tools sqlite:', e?.message || e);
+    return null;
+  }
+}
+
+function mirrorEventToConsensusTools(payload: {
+  id: string;
+  boardId: string;
+  runId: string | null;
+  type: string;
+  ts: number;
+  data: unknown;
+}) {
+  const mdb = getMirrorDb();
+  if (!mdb) return;
+  try {
+    mdb.prepare('CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)').run();
+    const row = mdb.prepare('SELECT value FROM kv WHERE key = ?').get('state') as { value?: string } | undefined;
+    const state = row?.value ? JSON.parse(row.value) : {
+      jobs: [], bids: [], claims: [], submissions: [], votes: [], resolutions: [], ledger: [], audit: [], errors: []
+    };
+    if (!Array.isArray(state.audit)) state.audit = [];
+
+    state.audit.push({
+      id: `lmb_${payload.id}`,
+      at: new Date(payload.ts).toISOString(),
+      type: payload.type,
+      jobId: payload.runId || undefined,
+      actorAgentId: 'consensus-local-mcp-board',
+      details: {
+        boardId: payload.boardId,
+        runId: payload.runId,
+        source: 'consensus-local-mcp-board',
+        payload: payload.data
+      }
+    });
+
+    mdb.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run('state', JSON.stringify(state));
+  } catch (e: any) {
+    console.warn('[mirror] failed to mirror event:', e?.message || e);
+  }
+}
+
 type Json = Record<string, unknown>;
 
 export type WorkflowRecord = {
@@ -46,9 +102,13 @@ export function updateRunStatus(id: string, status: string) {
 
 export function appendEvent(boardId: string, runId: string | null, type: string, payload: unknown) {
   const id = nanoid();
+  const ts = Date.now();
+  const redacted = redact(payload);
   const prev = runId ? db.prepare('SELECT id FROM events WHERE run_id=? ORDER BY ts DESC LIMIT 1').get(runId) as { id?: string } | undefined : undefined;
   db.prepare('INSERT INTO events(id,board_id,run_id,type,ts,payload_json,prev_event_id) VALUES (?,?,?,?,?,?,?)')
-    .run(id, boardId, runId, type, Date.now(), JSON.stringify(redact(payload)), prev?.id ?? null);
+    .run(id, boardId, runId, type, ts, JSON.stringify(redacted), prev?.id ?? null);
+
+  mirrorEventToConsensusTools({ id, boardId, runId, type, ts, data: redacted });
   return { id };
 }
 

@@ -1,18 +1,15 @@
 import {
   GuardEvaluateRequestSchema,
   GuardResultSchema,
-  HumanDecisionSchema,
   type GuardEvaluateRequest,
   type HumanDecision
 } from '@local-mcp-board/shared';
 import { appendEvent, createRun, getRun, updateRunStatus } from '../db/store.js';
-import { evaluateWithAiSdk } from '../adapters/ai-sdk.js';
-import { sendHumanApprovalPrompt } from '../adapters/chat-sdk.js';
+import { evaluateViaConsensusTools } from '../adapters/consensus-tools.js';
 
-const pendingApprovals = new Map<string, HumanDecision>();
-
-export function registerHumanDecision(runId: string, decision: HumanDecision) {
-  pendingApprovals.set(runId, HumanDecisionSchema.parse(decision));
+// Kept for API compatibility; approvals are finalized via human.approve endpoint/events.
+export function registerHumanDecision(_runId: string, _decision: HumanDecision) {
+  return;
 }
 
 export async function guardEvaluateWorkflow(raw: unknown) {
@@ -29,105 +26,42 @@ export async function executeGuardEvaluate(input: GuardEvaluateRequest) {
 
   appendEvent(input.boardId, runId, 'PROPOSED_ACTION', { type: input.guardType, payload: input.payload, policy: input.policy });
 
-  const votes = await collectVotesStep(input);
-  votes.forEach((v) => appendEvent(input.boardId, runId, 'EVALUATOR_VOTE', v));
-
-  const weightedYes = votes.filter((v) => v.vote === 'YES').length / Math.max(votes.length, 1);
-  const topRisk = Math.max(0, ...votes.map((v) => v.risk));
-  const requiresHitl = weightedYes >= input.policy.quorum && topRisk >= input.policy.hitlRequiredAboveRisk;
-
-  appendEvent(input.boardId, runId, 'AGGREGATED', { weighted_yes: weightedYes, top_risk: topRisk, requires_hitl: requiresHitl });
-
-  if (requiresHitl) {
-    await requestHumanStep(input, runId, weightedYes, topRisk);
-    await delayMs(2000);
-
-    const human = pendingApprovals.get(runId);
-    if (!human) {
-      const audit = appendEvent(input.boardId, runId, 'FINAL_DECISION', {
-        decision: 'REQUIRE_HUMAN',
-        reason: 'Risk requires Human Approval confirmation',
-        risk_score: topRisk,
-        weighted_yes: weightedYes,
-        votes,
-        next_step: { tool: 'human.approve', input: { runId } },
-        guard_type: input.guardType
-      });
-      updateRunStatus(runId, 'WAITING_HUMAN');
-      return GuardResultSchema.parse({
-        decision: 'REQUIRE_HUMAN',
-        reason: 'Risk requires Human Approval confirmation',
-        risk_score: topRisk,
-        audit_id: audit.id,
-        weighted_yes: weightedYes,
-        votes,
-        next_step: { tool: 'human.approve', input: { runId } },
-        guard_type: input.guardType
-      });
-    }
-
-    pendingApprovals.delete(runId);
-    const decision = human.decision === 'YES' ? 'ALLOW' : 'BLOCK';
-    const reason = human.decision === 'YES' ? 'Approved by human' : 'Blocked by human';
-    const audit = appendEvent(input.boardId, runId, 'FINAL_DECISION', {
-      decision,
-      reason,
-      risk_score: topRisk,
-      weighted_yes: weightedYes,
-      votes,
-      human,
-      guard_type: input.guardType
-    });
-    updateRunStatus(runId, decision === 'ALLOW' ? 'APPROVED' : 'BLOCKED');
-    return GuardResultSchema.parse({
-      decision,
-      reason,
-      risk_score: topRisk,
-      audit_id: audit.id,
-      weighted_yes: weightedYes,
-      votes,
-      guard_type: input.guardType
-    });
-  }
-
-  const top = votes[0];
-  const decision = top?.vote === 'NO' ? 'BLOCK' : top?.vote === 'REWRITE' ? 'REWRITE' : 'ALLOW';
-  const audit = appendEvent(input.boardId, runId, 'FINAL_DECISION', {
-    decision,
-    reason: top?.reason ?? 'No issues',
-    risk_score: top?.risk ?? topRisk,
-    weighted_yes: weightedYes,
-    votes,
-    guard_type: input.guardType
+  const result = evaluateViaConsensusTools({
+    runId,
+    boardId: input.boardId,
+    guardType: input.guardType,
+    payload: (input.payload || {}) as Record<string, unknown>,
+    policyPack: input.policy?.policyId
   });
-  updateRunStatus(runId, decision === 'ALLOW' ? 'APPROVED' : 'REVIEWED');
+
+  const audit = appendEvent(input.boardId, runId, 'FINAL_DECISION', {
+    decision: result.decision,
+    reason: result.reason,
+    risk_score: result.risk_score,
+    guard_type: result.guard_type,
+    audit_id: result.audit_id,
+    next_step: result.next_step,
+    consensus_meta: result.meta || null
+  });
+
+  const statusMap: Record<string, string> = {
+    ALLOW: 'APPROVED',
+    BLOCK: 'BLOCKED',
+    REWRITE: 'REVISION_REQUESTED',
+    REQUIRE_HUMAN: 'WAITING_HUMAN'
+  };
+  updateRunStatus(runId, statusMap[result.decision] || 'REVIEWED');
 
   return GuardResultSchema.parse({
-    decision,
-    reason: top?.reason ?? 'No issues',
-    risk_score: top?.risk ?? topRisk,
+    decision: result.decision,
+    reason: result.reason,
+    risk_score: result.risk_score,
     audit_id: audit.id,
-    weighted_yes: weightedYes,
-    votes,
-    guard_type: input.guardType
+    weighted_yes: 0,
+    votes: [],
+    next_step: result.next_step,
+    guard_type: result.guard_type
   });
-}
-
-async function collectVotesStep(input: GuardEvaluateRequest) {
-  'use step';
-  return evaluateWithAiSdk(input);
-}
-
-async function requestHumanStep(input: GuardEvaluateRequest, runId: string, quorum: number, risk: number) {
-  'use step';
-  const result = await sendHumanApprovalPrompt({
-    boardId: input.boardId,
-    runId,
-    quorum,
-    risk,
-    threshold: input.policy.hitlRequiredAboveRisk
-  });
-  appendEvent(input.boardId, runId, 'HUMAN_APPROVAL_REQUESTED', result);
 }
 
 export function normalizeGuardType(type: string): GuardEvaluateRequest['guardType'] {
@@ -135,8 +69,4 @@ export function normalizeGuardType(type: string): GuardEvaluateRequest['guardTyp
     return type;
   }
   return 'agent_action';
-}
-
-function delayMs(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

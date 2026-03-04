@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { ArrowLeft, Copy, Clock, Shield, ChevronDown, ChevronUp, Vote, Users, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Copy, Clock, Shield, ChevronDown, ChevronUp, Vote, Users, TrendingUp, TrendingDown, Link as LinkIcon } from 'lucide-react';
 import { getRun, getVotes } from '../lib/api';
 
 const DECISION_COLORS: Record<string, string> = {
@@ -47,6 +47,9 @@ export default function RunDetailPage() {
 
   const final = useMemo(() => events.find((e: any) => e.type === 'FINAL_DECISION'), [events]);
   const parsed = final ? (() => { try { return JSON.parse(final.payload_json || '{}'); } catch { return null; } })() : null;
+  const consensusMeta = parsed?.consensus_meta || parsed?.meta || null;
+  const consensusJobId = parsed?.audit_id || consensusMeta?.jobId || null;
+  const consensusSubmissionId = consensusMeta?.submissionId || null;
 
   const correlations = useMemo(() => {
     const rows = events
@@ -84,7 +87,7 @@ export default function RunDetailPage() {
 
       {parsed && (
         <Card className={`border ${DECISION_COLORS[parsed.decision] || ''}`}>
-          <CardContent className="pt-4">
+          <CardContent className="pt-4 space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <Badge className={DECISION_COLORS[parsed.decision]}>{parsed.decision}</Badge>
               <span className="font-medium">{parsed.reason}</span>
@@ -93,6 +96,29 @@ export default function RunDetailPage() {
                 <Copy className="h-3 w-3" /> Copy audit_id
               </Button>
             </div>
+
+            {(consensusJobId || consensusSubmissionId || parsed?.guard_type) && (
+              <div className="rounded-md border border-border/50 bg-background/40 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <LinkIcon className="h-3 w-3 text-primary" /> Consensus Metadata
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                  <div className="rounded border border-border/40 px-2 py-1.5">
+                    <div className="text-muted-foreground">Consensus Job</div>
+                    <div className="font-mono truncate">{consensusJobId || '—'}</div>
+                  </div>
+                  <div className="rounded border border-border/40 px-2 py-1.5">
+                    <div className="text-muted-foreground">Submission</div>
+                    <div className="font-mono truncate">{consensusSubmissionId || '—'}</div>
+                  </div>
+                  <div className="rounded border border-border/40 px-2 py-1.5">
+                    <div className="text-muted-foreground">Guard Type</div>
+                    <div className="truncate">{parsed?.guard_type || '—'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {parsed.suggested_rewrite && (
               <pre className="mt-3 text-xs bg-background/50 border rounded-md p-3 overflow-auto">{JSON.stringify(parsed.suggested_rewrite, null, 2)}</pre>
             )}

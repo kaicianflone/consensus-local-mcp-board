@@ -1,6 +1,5 @@
 import { HumanApprovalRequestSchema, parseHumanApprovalYesNo } from '@local-mcp-board/shared';
 import { appendEvent, getRun, listEvents, updateRunStatus } from '../db/store.js';
-import { registerHumanDecision } from '../workflows/guard-evaluate.js';
 
 const seen = new Set<string>();
 
@@ -10,12 +9,6 @@ export async function humanApprovePost(body: unknown) {
   if (seen.has(dedupe)) return { ok: true, runId: parsed.runId, deduped: true };
 
   const decision = parseHumanApprovalYesNo(parsed.replyText);
-  registerHumanDecision(parsed.runId, {
-    decision,
-    approver: parsed.approver,
-    idempotencyKey: parsed.idempotencyKey,
-    createdAt: new Date().toISOString()
-  });
 
   const run = getRun(parsed.runId) as { board_id?: string } | undefined;
   const boardId = parsed.boardId || run?.board_id;
