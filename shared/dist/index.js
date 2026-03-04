@@ -65,7 +65,7 @@ export const HumanApprovalRequestSchema = z.object({
     idempotencyKey: z.string(),
     boardId: z.string().optional()
 });
-export function parseHitlYesNo(text) {
+export function parseHumanApprovalYesNo(text) {
     const t = text.trim().toLowerCase();
     if (['yes', 'y', 'approve', 'ack', 'acknowledge'].includes(t))
         return 'YES';
@@ -73,5 +73,5 @@ export function parseHitlYesNo(text) {
         return 'NO';
     if (['rewrite', 'revise', 'revision'].includes(t))
         return 'REWRITE';
-    throw new Error('Unrecognized HITL reply; expected YES, NO, or REWRITE');
+    throw new Error('Unrecognized Human Approval reply; expected YES, NO, or REWRITE');
 }

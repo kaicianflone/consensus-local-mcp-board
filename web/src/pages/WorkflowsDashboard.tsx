@@ -102,7 +102,7 @@ export default function WorkflowsDashboard() {
       trigger: 'Trigger',
       agent: 'Agent',
       guard: 'Guard',
-      hitl: 'HITL',
+      hitl: 'Human Approval',
       group: 'Parallel Group',
       action: 'Action',
     };
@@ -126,7 +126,7 @@ export default function WorkflowsDashboard() {
         const hitlChildren = Array.from({ length: humanCount }, (_, i) => ({
           id: `hitl-${ts}-${i}`,
           type: 'hitl' as NodeType,
-          label: 'HITL',
+          label: 'Human Approval',
           config: defaults('hitl'),
         }));
         const groupNode = { 

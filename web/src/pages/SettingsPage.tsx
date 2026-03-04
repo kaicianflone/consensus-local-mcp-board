@@ -153,7 +153,7 @@ const PROVIDERS: ProviderConfig[] = [
     name: "Slack",
     icon: Hash,
     iconColor: "text-purple-400",
-    description: "Send HITL prompts and notifications to Slack channels.",
+    description: "Send Human Approval prompts and notifications to Slack channels.",
     requiresAdapter: true,
     fields: [
       {
@@ -173,7 +173,7 @@ const PROVIDERS: ProviderConfig[] = [
     name: "Microsoft Teams",
     icon: AtSign,
     iconColor: "text-blue-400",
-    description: "Send notifications and HITL prompts to Teams channels.",
+    description: "Send notifications and Human Approval prompts to Teams channels.",
     requiresAdapter: true,
     fields: [
       {
@@ -295,7 +295,7 @@ function ChatAdaptersSection({
             <div>
               <CardTitle>Chat Adapters</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Install chat platform adapters to enable HITL notifications and
+                Install chat platform adapters to enable Human Approval notifications and
                 webhook integrations.
               </p>
             </div>

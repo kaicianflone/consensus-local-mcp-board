@@ -8,7 +8,7 @@ export const PALETTE: { type: NodeType; label: string; icon: React.ElementType; 
   { type: 'trigger', label: 'Trigger', icon: Zap, color: 'text-amber-400' },
   { type: 'agent', label: 'Agent', icon: Bot, color: 'text-blue-400' },
   { type: 'guard', label: 'Guard', icon: Shield, color: 'text-emerald-400' },
-  { type: 'hitl', label: 'HITL', icon: Users, color: 'text-purple-400' },
+  { type: 'hitl', label: 'Human Approval', icon: Users, color: 'text-purple-400' },
   { type: 'action', label: 'Action', icon: Play, color: 'text-orange-400' },
 ];
 

@@ -46,7 +46,7 @@ export async function executeGuardEvaluate(input: GuardEvaluateRequest) {
     if (!human) {
       const audit = appendEvent(input.boardId, runId, 'FINAL_DECISION', {
         decision: 'REQUIRE_HUMAN',
-        reason: 'Risk requires HITL confirmation',
+        reason: 'Risk requires Human Approval confirmation',
         risk_score: topRisk,
         weighted_yes: weightedYes,
         votes,
@@ -56,7 +56,7 @@ export async function executeGuardEvaluate(input: GuardEvaluateRequest) {
       updateRunStatus(runId, 'WAITING_HUMAN');
       return GuardResultSchema.parse({
         decision: 'REQUIRE_HUMAN',
-        reason: 'Risk requires HITL confirmation',
+        reason: 'Risk requires Human Approval confirmation',
         risk_score: topRisk,
         audit_id: audit.id,
         weighted_yes: weightedYes,
@@ -127,7 +127,7 @@ async function requestHumanStep(input: GuardEvaluateRequest, runId: string, quor
     risk,
     threshold: input.policy.hitlRequiredAboveRisk
   });
-  appendEvent(input.boardId, runId, 'HITL_REQUESTED', result);
+  appendEvent(input.boardId, runId, 'HUMAN_APPROVAL_REQUESTED', result);
 }
 
 export function normalizeGuardType(type: string): GuardEvaluateRequest['guardType'] {

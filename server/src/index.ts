@@ -26,7 +26,7 @@ const TEMPLATE_1 = {
       { id: 'agent-3', type: 'agent', label: 'Code Quality', config: { agentCount: 1, personaMode: 'manual', personaNames: 'code-quality-reviewer', model: 'gpt-4o-mini' } }
     ] } },
     { id: 'hitl-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
-    { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHitlYes: true, idempotencyKeyFrom: 'pr.sha' } }
+    { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHumanApprovalYes: true, idempotencyKeyFrom: 'pr.sha' } }
   ]
 };
 
@@ -322,8 +322,8 @@ app.post('/api/human.approve', async (req, res) => {
   }
 });
 
-// Chat inbound endpoint for HITL replies (e.g., webhook from chat surface)
-app.post('/api/chat/hitl-reply', async (req, res) => {
+// Chat inbound endpoint for Human Approval replies (e.g., webhook from chat surface)
+app.post('/api/chat/human-approval-reply', async (req, res) => {
   try {
     const body = z.object({
       runId: z.string(),
@@ -343,7 +343,7 @@ app.post('/api/chat/hitl-reply', async (req, res) => {
     res.json(out);
   } catch (e: any) {
     const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'HUMAN_APPROVE_FAILED';
-    res.status(toHttpStatus(code)).json(err(code, 'Failed to process HITL reply', e?.message));
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to process Human Approval reply', e?.message));
   }
 });
 

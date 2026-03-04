@@ -43,9 +43,9 @@ async function sendViaWebhook(message: string, meta: Record<string, unknown>) {
   return { delivered: true, provider: 'webhook', status: r.status };
 }
 
-export async function sendHitlPrompt(prompt: ChatPrompt) {
+export async function sendHumanApprovalPrompt(prompt: ChatPrompt) {
   const mode = prompt.promptMode || 'yes-no';
-  const riskInfo = `run ${prompt.runId} reached quorum ${(prompt.quorum * 100).toFixed(0)}% but risk ${prompt.risk.toFixed(2)} >= ${prompt.threshold.toFixed(2)}, so HITL is required.`;
+  const riskInfo = `run ${prompt.runId} reached quorum ${(prompt.quorum * 100).toFixed(0)}% but risk ${prompt.risk.toFixed(2)} >= ${prompt.threshold.toFixed(2)}, so Human Approval is required.`;
 
   let actionHint: string;
   if (mode === 'approve-reject-revise') {
@@ -71,7 +71,7 @@ export async function sendHitlPrompt(prompt: ChatPrompt) {
     boardId: prompt.boardId,
     runId: prompt.runId,
     approverHint: prompt.approverHint ?? 'human',
-    type: 'hitl_request',
+    type: 'human_approval_request',
     promptMode: mode
   };
 

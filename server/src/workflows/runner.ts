@@ -55,7 +55,7 @@ export async function runWorkflow(definition: any, workflowId: string, opts: Run
 
 export async function resumeWorkflow(definition: any, workflowId: string, runId: string, decision: 'YES' | 'NO' | 'REWRITE', approver = 'human') {
   const boardId = String(definition?.boardId || 'workflow-system');
-  appendEvent(boardId, runId, 'WORKFLOW_HITL_DECISION', { workflow_id: workflowId, decision, approver });
+  appendEvent(boardId, runId, 'WORKFLOW_HUMAN_APPROVAL_DECISION', { workflow_id: workflowId, decision, approver });
 
   if (decision === 'NO') {
     appendEvent(boardId, runId, 'WORKFLOW_BLOCKED_BY_HUMAN', { workflow_id: workflowId, approver });
@@ -80,7 +80,7 @@ export async function resumeWorkflow(definition: any, workflowId: string, runId:
     }
   }
 
-  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HITL', limit: 1 }) as any[];
+  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HUMAN_APPROVAL', limit: 1 }) as any[];
   const waitPayload = waits[0]?.payload_json ? JSON.parse(String(waits[0].payload_json)) : null;
   const startIndex = typeof waitPayload?.node_index === 'number' ? waitPayload.node_index + 1 : 0;
 
@@ -131,7 +131,7 @@ async function resumeWithDevkit(definition: any, workflowId: string, runId: stri
     approver
   });
 
-  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HITL', limit: 1 }) as any[];
+  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HUMAN_APPROVAL', limit: 1 }) as any[];
   const waitPayload = waits[0]?.payload_json ? JSON.parse(String(waits[0].payload_json)) : null;
   const startIndex = typeof waitPayload?.node_index === 'number' ? waitPayload.node_index + 1 : 0;
 
@@ -217,7 +217,7 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
       });
 
       if (output?.pause === true && (node.type === 'hitl' || node.type === 'group')) {
-        appendEvent(boardId, runId, 'WORKFLOW_WAITING_HITL', {
+        appendEvent(boardId, runId, 'WORKFLOW_WAITING_HUMAN_APPROVAL', {
           workflow_id: workflowId,
           engine,
           external_run_id: externalRunId,
