@@ -108,18 +108,9 @@ export function WorkflowToolbar({
               className="group flex items-center gap-2 min-w-0 hover:text-primary transition-colors"
               onClick={() => setRenaming(true)}
             >
-              <span className="font-medium text-sm truncate max-w-[240px]">{name}</span>
+              <span className="font-medium text-sm">{name}</span>
               <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             </button>
-          )}
-
-          {workflowId && (
-            <Badge variant="outline" className="text-[10px] font-mono shrink-0 hidden sm:inline-flex">
-              {workflowId.slice(0, 12)}...
-            </Badge>
-          )}
-          {!workflowId && (
-            <Badge variant="secondary" className="text-[10px] shrink-0">unsaved</Badge>
           )}
         </div>
 
