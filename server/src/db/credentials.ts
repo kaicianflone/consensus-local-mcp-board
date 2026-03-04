@@ -17,13 +17,15 @@ function getSecret(db: Database.Database): Buffer {
     return _secret;
   }
 
+  // Ensure _internal_config table exists before querying
+  db.exec("CREATE TABLE IF NOT EXISTS _internal_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+
   const row = db.prepare("SELECT value FROM _internal_config WHERE key = 'credentials_secret'").get() as { value: string } | undefined;
   if (row) {
     _secret = Buffer.from(row.value, 'hex');
     return _secret;
   }
 
-  db.exec("CREATE TABLE IF NOT EXISTS _internal_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
   const generated = crypto.randomBytes(32);
   db.prepare("INSERT INTO _internal_config(key, value) VALUES (?, ?)").run('credentials_secret', generated.toString('hex'));
   _secret = generated;
