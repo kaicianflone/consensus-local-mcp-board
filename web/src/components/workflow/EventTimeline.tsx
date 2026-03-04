@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import { Clock, Shield, Users, Zap, Info } from 'lucide-react';
+import { Clock, Shield, Users, Zap, Info, Copy, Check } from 'lucide-react';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import { getEvents } from '../../lib/api';
 
 const EVENT_ICONS: Record<string, React.ElementType> = {
@@ -24,6 +25,7 @@ export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
   const [widths, setWidths] = useState({ time: 130, type: 110, duration: 70, status: 100 });
   const [hoveredEvent, setHoveredEvent] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isMouseInTooltip, setIsMouseInTooltip] = useState(false);
   const hideTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -203,8 +205,33 @@ export function EventTimeline() {
                                <div className="absolute -right-2 bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
                                <div className="absolute -right-[7px] bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
                                
-                               <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center gap-2 sticky top-0 bg-[#030712] z-10">
-                                 <Info className="h-3 w-3" /> Raw Event Data
+                               <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center justify-between sticky top-0 bg-[#030712] z-10">
+                                 <div className="flex items-center gap-2">
+                                   <Info className="h-3 w-3" /> Raw Event Data
+                                 </div>
+                                 <Button
+                                   variant="ghost"
+                                   size="icon"
+                                   className="h-6 w-14 gap-1 px-1.5 text-[9px] hover:bg-emerald-500/10 text-emerald-500/80 hover:text-emerald-400 transition-all border border-emerald-500/20"
+                                   onClick={async (e) => {
+                                     e.stopPropagation();
+                                     await navigator.clipboard.writeText(fullInfo);
+                                     setCopiedId(event.id);
+                                     setTimeout(() => setCopiedId(null), 2000);
+                                   }}
+                                 >
+                                   {copiedId === event.id ? (
+                                     <>
+                                       <Check className="h-2.5 w-2.5" />
+                                       <span>Copied</span>
+                                     </>
+                                   ) : (
+                                     <>
+                                       <Copy className="h-2.5 w-2.5" />
+                                       <span>Copy</span>
+                                     </>
+                                   )}
+                                 </Button>
                                </div>
                                {fullInfo}
                              </div>
