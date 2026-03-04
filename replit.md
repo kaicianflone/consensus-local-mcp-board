@@ -61,9 +61,22 @@ This is a monorepo with three workspaces:
 - Automatically matches and runs workflows whose trigger node source matches the incoming event
 - Webhook URL displayed on Settings page with copy button
 
+## N-LLM Agent System
+
+- Agent nodes support **N parallel LLM evaluators** (configurable 1-10, default 3)
+- Uses Vercel AI SDK (`ai` + `@ai-sdk/openai`) via `generateText` for LLM calls
+- Each agent gets a persona identity with reputation weight from the board's participant system
+- **Persona modes**:
+  - `auto` — picks from existing board participants or auto-creates from reviewer archetypes (security-reviewer, performance-analyst, code-quality-reviewer, architecture-reviewer, etc.)
+  - `manual` — user specifies comma-separated persona names
+- Votes are aggregated using reputation-weighted average risk before feeding into the guard node
+- Guard nodes automatically detect upstream agent outputs and use their aggregated votes for consensus decisions
+- Canvas shows agent count badge, model name, and persona mode indicator on agent nodes
+- Agent node settings: Agent Count, Model, System Prompt, Persona Mode, Persona Names, Temperature, Tool Access
+
 ## Adapter Credential Resolution
 
-- `ai-sdk.ts` checks stored OpenAI credentials before falling back to `OPENAI_API_KEY` env var
+- `ai-sdk.ts` uses Vercel AI SDK (`generateText` from `ai` package with `@ai-sdk/openai` provider), falls back to deterministic evaluation when no API key is available
 - `chat-sdk.ts` checks stored Slack credentials before falling back to `CHAT_WEBHOOK_URL` / `CHAT_WEBHOOK_BEARER` env vars
 
 ## Development

@@ -130,7 +130,28 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
 
         {node.type === 'agent' && (
           <>
-            <FieldLabel>Model <Input value={draft.model || ''} onChange={(e) => set('model', e.target.value)} /></FieldLabel>
+            <FieldLabel>Agent Count (N-LLM) <Input type="number" min="1" max="10" value={draft.agentCount ?? 3} onChange={(e) => set('agentCount', Number(e.target.value))} /></FieldLabel>
+            <FieldLabel>Model <Input value={draft.model || ''} onChange={(e) => set('model', e.target.value)} placeholder="gpt-4o-mini" /></FieldLabel>
+            <FieldLabel>
+              System Prompt
+              <textarea
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[60px] resize-y"
+                value={draft.systemPrompt || ''}
+                onChange={(e) => set('systemPrompt', e.target.value)}
+                placeholder="You are a strict code reviewer..."
+                rows={3}
+              />
+            </FieldLabel>
+            <FieldLabel>
+              Persona Mode
+              <Select value={draft.personaMode || 'auto'} onChange={(e) => set('personaMode', e.target.value)}>
+                <option value="auto">Auto (from board participants)</option>
+                <option value="manual">Manual (specify names)</option>
+              </Select>
+            </FieldLabel>
+            {draft.personaMode === 'manual' && (
+              <FieldLabel>Persona Names <Input value={draft.personaNames || ''} onChange={(e) => set('personaNames', e.target.value)} placeholder="security-reviewer, perf-analyst, code-quality" /></FieldLabel>
+            )}
             <FieldLabel>Temperature <Input type="number" step="0.1" min="0" max="2" value={draft.temperature ?? 0} onChange={(e) => set('temperature', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>
               Tool Access

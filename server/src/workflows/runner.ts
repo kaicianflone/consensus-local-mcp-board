@@ -7,10 +7,25 @@ import {
   createWorkflowRun,
   updateWorkflowRunStatus,
   upsertWorkflowRunLink,
-  getWorkflowRunLink
+  getWorkflowRunLink,
+  listParticipants,
+  createParticipant
 } from '../db/store.js';
-import { evaluateWithAiSdk } from '../adapters/ai-sdk.js';
+import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
 import { sendHitlPrompt } from '../adapters/chat-sdk.js';
+
+const REVIEWER_ARCHETYPES = [
+  'security-reviewer',
+  'performance-analyst',
+  'code-quality-reviewer',
+  'architecture-reviewer',
+  'reliability-engineer',
+  'api-design-reviewer',
+  'data-integrity-analyst',
+  'scalability-reviewer',
+  'compliance-auditor',
+  'ux-impact-reviewer',
+];
 
 type RunOpts = {
   runId?: string;
@@ -252,18 +267,68 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   }
 
   if (node.type === 'agent') {
-    const votes = await evaluateWithAiSdk({
-      runId: ids.runId,
-      boardId: ids.boardId,
-      guardType: 'agent_action',
-      payload: { input: context, prompt: node.config?.prompt || '', nodeConfig: node.config || {} },
-      policy: { policyId: 'agent-node', version: 'v1', quorum: 0.7, riskThreshold: 0.7, hitlRequiredAboveRisk: 0.7, options: {} },
-      idempotencyKey: `${ids.runId}:${node.id}`
-    });
-    return { votes };
+    const agentCount = Math.max(1, Math.min(10, Number(node.config?.agentCount ?? 3)));
+    const personaMode = node.config?.personaMode || 'auto';
+    const model = node.config?.model || 'gpt-4o-mini';
+    const temperature = Number(node.config?.temperature ?? 0);
+    const systemPrompt = node.config?.systemPrompt || '';
+
+    const personas: AgentPersona[] = await resolvePersonas(ids.boardId, agentCount, personaMode, node.config?.personaNames || '');
+
+    const votes = await evaluateWithAiSdk(
+      {
+        runId: ids.runId,
+        boardId: ids.boardId,
+        guardType: 'agent_action',
+        payload: { input: context, prompt: node.config?.prompt || '', nodeConfig: node.config || {} },
+        policy: { policyId: 'agent-node', version: 'v1', quorum: 0.7, riskThreshold: 0.7, hitlRequiredAboveRisk: 0.7, options: {} },
+        idempotencyKey: `${ids.runId}:${node.id}`
+      },
+      { agentCount, personas, model, temperature, systemPrompt }
+    );
+
+    let totalWeight = 0;
+    let weightedRisk = 0;
+    for (let i = 0; i < votes.length; i++) {
+      const rep = personas[i]?.reputation ?? 0.5;
+      totalWeight += rep;
+      weightedRisk += votes[i].risk * rep;
+    }
+    const aggregatedRisk = totalWeight > 0 ? weightedRisk / totalWeight : votes.length > 0 ? votes.reduce((s, v) => s + v.risk, 0) / votes.length : 0.5;
+
+    return { votes, aggregatedRisk, agentCount, personas: personas.map((p) => ({ name: p.name, reputation: p.reputation })) };
   }
 
   if (node.type === 'guard') {
+    const agentOutputs = Object.values(context).filter((v: any) => Array.isArray(v?.votes) && typeof v?.aggregatedRisk === 'number');
+    if (agentOutputs.length > 0) {
+      const allVotes = agentOutputs.flatMap((o: any) => o.votes);
+      const aggregatedRisk = agentOutputs.reduce((sum: number, o: any) => sum + (o.aggregatedRisk || 0), 0) / agentOutputs.length;
+      const yesCount = allVotes.filter((v: any) => v.vote === 'YES').length;
+      const noCount = allVotes.filter((v: any) => v.vote === 'NO').length;
+      const rewriteCount = allVotes.filter((v: any) => v.vote === 'REWRITE').length;
+      const quorum = Number(node.config?.quorum ?? 0.7);
+      const riskThreshold = Number(node.config?.riskThreshold ?? 0.7);
+
+      let decision: 'ALLOW' | 'BLOCK' | 'REWRITE';
+      if (noCount > allVotes.length * (1 - quorum)) {
+        decision = 'BLOCK';
+      } else if (aggregatedRisk > riskThreshold) {
+        decision = 'REWRITE';
+      } else if (rewriteCount > yesCount) {
+        decision = 'REWRITE';
+      } else {
+        decision = 'ALLOW';
+      }
+
+      return {
+        decision,
+        risk: aggregatedRisk,
+        reasons: allVotes.map((v: any) => `[${v.evaluator}] ${v.reason}`),
+        voteSummary: { yes: yesCount, no: noCount, rewrite: rewriteCount, total: allVotes.length }
+      };
+    }
+
     const votes = await evaluateWithAiSdk({
       runId: ids.runId,
       boardId: ids.boardId,
@@ -309,4 +374,39 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   }
 
   return { ok: true };
+}
+
+async function resolvePersonas(boardId: string, agentCount: number, personaMode: string, personaNamesRaw: string): Promise<AgentPersona[]> {
+  const personas: AgentPersona[] = [];
+
+  if (personaMode === 'manual' && personaNamesRaw.trim()) {
+    const names = personaNamesRaw.split(',').map((n) => n.trim()).filter(Boolean);
+    const existing = listParticipants(boardId) as any[];
+    for (let i = 0; i < agentCount; i++) {
+      const name = names[i % names.length];
+      let participant = existing.find((p: any) => p.subject_id === name);
+      if (!participant) {
+        participant = createParticipant({ boardId, subjectType: 'agent', subjectId: name, role: 'reviewer', weight: 1, reputation: 0.5 });
+      }
+      personas.push({ name, reputation: Number(participant?.reputation ?? 0.5) });
+    }
+  } else {
+    const existing = listParticipants(boardId) as any[];
+    const agentParticipants = existing.filter((p: any) => p.subject_type === 'agent');
+    for (let i = 0; i < agentCount; i++) {
+      if (i < agentParticipants.length) {
+        const p = agentParticipants[i];
+        personas.push({ name: p.subject_id, reputation: Number(p.reputation ?? 0.5) });
+      } else {
+        const archetype = REVIEWER_ARCHETYPES[i % REVIEWER_ARCHETYPES.length];
+        const alreadyExists = existing.find((p: any) => p.subject_id === archetype);
+        if (!alreadyExists) {
+          createParticipant({ boardId, subjectType: 'agent', subjectId: archetype, role: 'reviewer', weight: 1, reputation: 0.5 });
+        }
+        personas.push({ name: archetype, reputation: Number(alreadyExists?.reputation ?? 0.5) });
+      }
+    }
+  }
+
+  return personas;
 }

@@ -73,7 +73,24 @@ function SortableNode({ node, isSelected, isLast, onSelect, onDelete }: Sortable
 
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">{node.label}</div>
-          <div className="text-xs text-muted-foreground">{node.type}</div>
+          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <span>{node.type}</span>
+            {node.type === 'agent' && node.config?.model && (
+              <span className="text-blue-400/80">{node.config.model}</span>
+            )}
+          </div>
+          {node.type === 'agent' && (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {node.config?.agentCount && (
+                <span className="inline-flex items-center rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
+                  {node.config.agentCount} agents
+                </span>
+              )}
+              <span className="inline-flex items-center rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-400/70">
+                {node.config?.personaMode === 'manual' ? 'manual personas' : 'auto personas'}
+              </span>
+            </div>
+          )}
         </div>
 
         <Button
