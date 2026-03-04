@@ -53,7 +53,7 @@ export async function runWorkflow(definition: any, workflowId: string, opts: Run
   return executeLocalFlow(definition, workflowId, opts);
 }
 
-export async function resumeWorkflow(definition: any, workflowId: string, runId: string, decision: 'YES' | 'NO', approver = 'human') {
+export async function resumeWorkflow(definition: any, workflowId: string, runId: string, decision: 'YES' | 'NO' | 'REWRITE', approver = 'human') {
   const boardId = String(definition?.boardId || 'workflow-system');
   appendEvent(boardId, runId, 'WORKFLOW_HITL_DECISION', { workflow_id: workflowId, decision, approver });
 
@@ -62,6 +62,13 @@ export async function resumeWorkflow(definition: any, workflowId: string, runId:
     updateRunStatus(runId, 'BLOCKED');
     updateWorkflowRunStatus(runId, 'BLOCKED');
     return { runId, boardId, blocked: true };
+  }
+
+  if (decision === 'REWRITE') {
+    appendEvent(boardId, runId, 'WORKFLOW_REVISION_REQUESTED', { workflow_id: workflowId, approver });
+    updateRunStatus(runId, 'REVISION_REQUESTED');
+    updateWorkflowRunStatus(runId, 'REVISION_REQUESTED');
+    return { runId, boardId, revisionRequested: true };
   }
 
   const link = getWorkflowRunLink(runId);
@@ -369,16 +376,18 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         return { subjectId: p.subject_id, adapter: meta.chatAdapter, handle: meta.chatHandle };
       });
 
+    const promptMode = node.config?.promptMode || 'yes-no';
     await sendHitlPrompt({
       boardId: ids.boardId,
       runId: ids.runId,
       quorum: 0.7,
       risk,
       threshold,
+      promptMode,
       approverHint: node.config?.approver || 'human',
       chatTargets: chatLinkedParticipants.length > 0 ? chatLinkedParticipants : undefined
     });
-    return { pause: true, risk, threshold, chatTargets: chatLinkedParticipants };
+    return { pause: true, risk, threshold, promptMode, chatTargets: chatLinkedParticipants };
   }
 
   if (node.type === 'group') {

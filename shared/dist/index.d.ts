@@ -240,4 +240,4 @@ export type GuardResult = z.infer<typeof GuardResultSchema>;
 export type EvaluateInput = z.infer<typeof EvaluateInputSchema>;
 export type GuardEvaluateRequest = z.infer<typeof GuardEvaluateRequestSchema>;
 export type HumanDecision = z.infer<typeof HumanDecisionSchema>;
-export declare function parseHitlYesNo(text: string): 'YES' | 'NO';
+export declare function parseHitlYesNo(text: string): 'YES' | 'NO' | 'REWRITE';

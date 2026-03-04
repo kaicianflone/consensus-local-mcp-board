@@ -31,15 +31,25 @@ export async function humanApprovePost(body: unknown) {
     const aggregated = recent.find((e: any) => e.type === 'AGGREGATED');
     const aggPayload = aggregated?.payload_json ? JSON.parse(String((aggregated as any).payload_json)) : {};
 
-    const finalDecision = decision === 'YES' ? 'ALLOW' : 'BLOCK';
+    const finalDecision = decision === 'YES' ? 'ALLOW' : decision === 'REWRITE' ? 'REWRITE' : 'BLOCK';
+    const reasons: Record<string, string> = {
+      ALLOW: 'Approved by human YES reply',
+      BLOCK: 'Blocked by human NO reply',
+      REWRITE: 'Revision requested by human REVISE reply',
+    };
+    const statusMap: Record<string, string> = {
+      ALLOW: 'APPROVED',
+      BLOCK: 'BLOCKED',
+      REWRITE: 'REVISION_REQUESTED',
+    };
     appendEvent(boardId, parsed.runId, 'FINAL_DECISION', {
       decision: finalDecision,
-      reason: decision === 'YES' ? 'Approved by human YES reply' : 'Blocked by human NO reply',
+      reason: reasons[finalDecision],
       risk_score: Number(aggPayload?.top_risk ?? 0.5),
       weighted_yes: Number(aggPayload?.weighted_yes ?? 0),
       source: 'human.approve'
     });
-    updateRunStatus(parsed.runId, finalDecision === 'ALLOW' ? 'APPROVED' : 'BLOCKED');
+    updateRunStatus(parsed.runId, statusMap[finalDecision]);
   }
 
   seen.add(dedupe);

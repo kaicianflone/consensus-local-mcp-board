@@ -202,7 +202,8 @@ export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
               Prompt Mode
               <Select value={draft.promptMode || 'yes-no'} onChange={(e) => set('promptMode', e.target.value)}>
                 <option value="yes-no">Yes / No</option>
-                <option value="weighted-vote">Weighted Vote</option>
+                <option value="approve-reject-revise">Approve / Reject / Revise</option>
+                <option value="acknowledge">Acknowledge</option>
               </Select>
             </FieldLabel>
             <FieldLabel>Timeout (sec) <Input type="number" value={draft.timeoutSec ?? 900} onChange={(e) => set('timeoutSec', Number(e.target.value))} /></FieldLabel>

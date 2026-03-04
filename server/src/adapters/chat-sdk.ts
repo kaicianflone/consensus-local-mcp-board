@@ -14,6 +14,7 @@ type ChatPrompt = {
   quorum: number;
   risk: number;
   threshold: number;
+  promptMode?: string;
   chatTargets?: ChatTarget[];
 };
 
@@ -43,7 +44,19 @@ async function sendViaWebhook(message: string, meta: Record<string, unknown>) {
 }
 
 export async function sendHitlPrompt(prompt: ChatPrompt) {
-  const message = `Guard tool alert: run ${prompt.runId} reached quorum ${(prompt.quorum * 100).toFixed(0)}% but risk ${prompt.risk.toFixed(2)} >= ${prompt.threshold.toFixed(2)}, so HITL is required. Reply YES or NO.`;
+  const mode = prompt.promptMode || 'yes-no';
+  const riskInfo = `run ${prompt.runId} reached quorum ${(prompt.quorum * 100).toFixed(0)}% but risk ${prompt.risk.toFixed(2)} >= ${prompt.threshold.toFixed(2)}, so HITL is required.`;
+
+  let actionHint: string;
+  if (mode === 'approve-reject-revise') {
+    actionHint = 'Reply APPROVE, REJECT, or REVISE.';
+  } else if (mode === 'acknowledge') {
+    actionHint = 'Reply ACK to acknowledge.';
+  } else {
+    actionHint = 'Reply YES or NO.';
+  }
+
+  const message = `Guard tool alert: ${riskInfo} ${actionHint}`;
 
   const targetInfo = prompt.chatTargets && prompt.chatTargets.length > 0
     ? prompt.chatTargets.map((t) => `${t.subjectId} via ${t.adapter}:${t.handle}`).join(', ')
@@ -51,14 +64,15 @@ export async function sendHitlPrompt(prompt: ChatPrompt) {
 
   if (chatProvider === 'stdout') {
     console.log('[chat-sdk]', message, `[targets: ${targetInfo}]`);
-    return { delivered: true, provider: 'stdout', message, targets: targetInfo };
+    return { delivered: true, provider: 'stdout', message, targets: targetInfo, promptMode: mode };
   }
 
   const meta: Record<string, unknown> = {
     boardId: prompt.boardId,
     runId: prompt.runId,
     approverHint: prompt.approverHint ?? 'human',
-    type: 'hitl_request'
+    type: 'hitl_request',
+    promptMode: mode
   };
 
   if (prompt.chatTargets && prompt.chatTargets.length > 0) {

@@ -344,7 +344,7 @@ app.post('/api/workflows/:id/run', async (req, res) => {
 
 app.post('/api/workflow-runs/:runId/approve', async (req, res) => {
   try {
-    const body = z.object({ decision: z.enum(['YES', 'NO']), approver: z.string().default('human') }).parse(req.body || {});
+    const body = z.object({ decision: z.enum(['YES', 'NO', 'REWRITE']), approver: z.string().default('human') }).parse(req.body || {});
     const wr = getWorkflowRunByRunId(req.params.runId);
     if (!wr) return res.status(404).json(err('WORKFLOW_RUN_NOT_FOUND', 'Workflow run not found'));
     const workflow = getWorkflow(wr.workflow_id);

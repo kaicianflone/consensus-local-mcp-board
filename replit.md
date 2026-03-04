@@ -98,6 +98,16 @@ The system supports two distinct agent types, both managed via the Agents & Part
 - Node types: `trigger`, `agent`, `guard`, `hitl`, `group`, `action`
 - Valid transitions include: `guard → group`, `group → hitl`, `group → action`, `group → guard`
 
+## HITL Prompt Modes
+
+HITL nodes support three prompt modes that control what response options are presented to the human reviewer:
+
+- **Yes / No** (`yes-no`) — Binary approval. YES continues the workflow, NO blocks it. Default mode.
+- **Approve / Reject / Revise** (`approve-reject-revise`) — Three-way decision. APPROVE (YES) continues, REJECT (NO) blocks, REVISE (REWRITE) sets status to `REVISION_REQUESTED` and records a `WORKFLOW_REVISION_REQUESTED` event.
+- **Acknowledge** (`acknowledge`) — Single-button confirmation. The workflow pauses for awareness but the human can only acknowledge (ACK → YES).
+
+The prompt mode flows from `node.config.promptMode` through the runner to `sendHitlPrompt` in the chat-sdk adapter, which formats the message with appropriate response instructions. The `/api/workflow-runs/:runId/approve` endpoint accepts `YES`, `NO`, or `REWRITE` decisions.
+
 ## Participant Chat Linking
 
 - Agents & Participants panel supports linking participants to chat adapters (Slack, Discord, Teams, Telegram, Google Chat)

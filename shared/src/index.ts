@@ -79,9 +79,10 @@ export type EvaluateInput = z.infer<typeof EvaluateInputSchema>;
 export type GuardEvaluateRequest = z.infer<typeof GuardEvaluateRequestSchema>;
 export type HumanDecision = z.infer<typeof HumanDecisionSchema>;
 
-export function parseHitlYesNo(text: string): 'YES' | 'NO' {
+export function parseHitlYesNo(text: string): 'YES' | 'NO' | 'REWRITE' {
   const t = text.trim().toLowerCase();
-  if (['yes', 'y', 'approve'].includes(t)) return 'YES';
-  if (['no', 'n', 'block', 'deny'].includes(t)) return 'NO';
-  throw new Error('Unrecognized HITL reply; expected YES or NO');
+  if (['yes', 'y', 'approve', 'ack', 'acknowledge'].includes(t)) return 'YES';
+  if (['no', 'n', 'block', 'deny', 'reject'].includes(t)) return 'NO';
+  if (['rewrite', 'revise', 'revision'].includes(t)) return 'REWRITE';
+  throw new Error('Unrecognized HITL reply; expected YES, NO, or REWRITE');
 }
