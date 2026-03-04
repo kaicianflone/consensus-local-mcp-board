@@ -170,11 +170,9 @@ export function EventTimeline() {
                       className="py-1.5 px-2 align-top relative group/cell text-center"
                       onMouseEnter={(e) => {
                         if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-                        setHoveredEvent({ id: event.id, x: e.clientX, y: e.pageY });
-                      }}
-                      onMouseMove={(e) => {
-                        if (!isMouseInTooltip) {
-                          setHoveredEvent({ id: event.id, x: e.clientX, y: e.pageY });
+                        // Only set position on initial entry
+                        if (!hoveredEvent) {
+                          setHoveredEvent({ id: event.id, x: e.clientX, y: e.clientY });
                         }
                       }}
                       onMouseLeave={() => {
