@@ -12,7 +12,7 @@ import {
   createParticipant
 } from '../db/store.js';
 import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
-import { sendHitlPrompt } from '../adapters/chat-sdk.js';
+import { sendHumanApprovalPrompt } from '../adapters/chat-sdk.js';
 
 const REVIEWER_ARCHETYPES = [
   'security-reviewer',
@@ -377,7 +377,7 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
       });
 
     const promptMode = node.config?.promptMode || 'yes-no';
-    await sendHitlPrompt({
+    await sendHumanApprovalPrompt({
       boardId: ids.boardId,
       runId: ids.runId,
       quorum: 0.7,

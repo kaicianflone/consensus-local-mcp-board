@@ -9,19 +9,19 @@ export declare const PolicyMetadataSchema: z.ZodObject<{
     hitlRequiredAboveRisk: z.ZodDefault<z.ZodNumber>;
     options: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodAny>>;
 }, "strip", z.ZodTypeAny, {
-    policyId: string;
+    options: Record<string, any>;
     version: string;
+    policyId: string;
     quorum: number;
     riskThreshold: number;
     hitlRequiredAboveRisk: number;
-    options: Record<string, any>;
 }, {
-    policyId?: string | undefined;
+    options?: Record<string, any> | undefined;
     version?: string | undefined;
+    policyId?: string | undefined;
     quorum?: number | undefined;
     riskThreshold?: number | undefined;
     hitlRequiredAboveRisk?: number | undefined;
-    options?: Record<string, any> | undefined;
 }>;
 export declare const GuardVoteSchema: z.ZodObject<{
     evaluator: z.ZodString;
@@ -154,19 +154,19 @@ export declare const GuardEvaluateRequestSchema: z.ZodObject<{
         hitlRequiredAboveRisk: z.ZodDefault<z.ZodNumber>;
         options: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodAny>>;
     }, "strip", z.ZodTypeAny, {
-        policyId: string;
+        options: Record<string, any>;
         version: string;
+        policyId: string;
         quorum: number;
         riskThreshold: number;
         hitlRequiredAboveRisk: number;
-        options: Record<string, any>;
     }, {
-        policyId?: string | undefined;
+        options?: Record<string, any> | undefined;
         version?: string | undefined;
+        policyId?: string | undefined;
         quorum?: number | undefined;
         riskThreshold?: number | undefined;
         hitlRequiredAboveRisk?: number | undefined;
-        options?: Record<string, any> | undefined;
     }>>;
     idempotencyKey: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -175,12 +175,12 @@ export declare const GuardEvaluateRequestSchema: z.ZodObject<{
     payload: Record<string, any>;
     guardType: "send_email" | "code_merge" | "publish" | "support_reply" | "agent_action" | "deployment" | "permission_escalation";
     policy: {
-        policyId: string;
+        options: Record<string, any>;
         version: string;
+        policyId: string;
         quorum: number;
         riskThreshold: number;
         hitlRequiredAboveRisk: number;
-        options: Record<string, any>;
     };
     idempotencyKey: string;
 }, {
@@ -190,12 +190,12 @@ export declare const GuardEvaluateRequestSchema: z.ZodObject<{
     guardType: "send_email" | "code_merge" | "publish" | "support_reply" | "agent_action" | "deployment" | "permission_escalation";
     idempotencyKey: string;
     policy?: {
-        policyId?: string | undefined;
+        options?: Record<string, any> | undefined;
         version?: string | undefined;
+        policyId?: string | undefined;
         quorum?: number | undefined;
         riskThreshold?: number | undefined;
         hitlRequiredAboveRisk?: number | undefined;
-        options?: Record<string, any> | undefined;
     } | undefined;
 }>;
 export declare const HumanDecisionSchema: z.ZodObject<{

@@ -7,7 +7,7 @@ import {
 } from '@local-mcp-board/shared';
 import { appendEvent, createRun, getRun, updateRunStatus } from '../db/store.js';
 import { evaluateWithAiSdk } from '../adapters/ai-sdk.js';
-import { sendHitlPrompt } from '../adapters/chat-sdk.js';
+import { sendHumanApprovalPrompt } from '../adapters/chat-sdk.js';
 
 const pendingApprovals = new Map<string, HumanDecision>();
 
@@ -120,7 +120,7 @@ async function collectVotesStep(input: GuardEvaluateRequest) {
 
 async function requestHumanStep(input: GuardEvaluateRequest, runId: string, quorum: number, risk: number) {
   'use step';
-  const result = await sendHitlPrompt({
+  const result = await sendHumanApprovalPrompt({
     boardId: input.boardId,
     runId,
     quorum,
