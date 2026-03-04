@@ -84,7 +84,7 @@ interface SortableNodeProps {
   onDelete: (id: string) => void;
 }
 
-function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete, hideDelete }: SortableNodeProps & { hideDelete?: boolean }) {
+function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete, hideDelete, hideHandle }: SortableNodeProps & { hideDelete?: boolean; hideHandle?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
   const [containerWidth, setContainerWidth] = React.useState(0);
   const resizeRef = React.useRef<HTMLDivElement>(null);
@@ -125,13 +125,15 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
           )}
         >
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-cyan-500/20">
-            <button
-              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="h-4 w-4" />
-            </button>
+            {!hideHandle && (
+              <button
+                className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+                {...attributes}
+                {...listeners}
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+            )}
             <Layers className="h-3.5 w-3.5 text-cyan-400" />
             <span className="text-xs font-medium text-cyan-400">{node.label}</span>
             <span className="text-[10px] text-muted-foreground ml-auto">{children.length} parallel</span>
@@ -194,13 +196,15 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
         )}
         onClick={() => onSelect(node.id)}
       >
-        <button
-          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        {!hideHandle && (
+          <button
+            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
 
         {Icon && <Icon className={cn('h-4 w-4 shrink-0', NODE_ICON_COLORS[node.type])} />}
 
@@ -232,6 +236,35 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
         </div>
       )}
     </>
+  );
+}
+
+function FirewallHeader({ node, onDelete }: { node: WorkflowNode; onDelete: (id: string) => void }) {
+  const { attributes, listeners } = useSortable({ id: node.id });
+  return (
+    <div className="flex items-center justify-between mb-1 px-1">
+      <div className="flex items-center gap-2">
+        <button
+          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-emerald-500 touch-none"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <Shield className="h-4 w-4 text-emerald-500" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500/80">Decision Firewall</span>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/firewall:opacity-100 transition-opacity"
+        onClick={() => {
+          onDelete(node.id);
+        }}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
   );
 }
 
@@ -270,23 +303,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
       renderedItems.push(
         <React.Fragment key={`firewall-${node.id}`}>
           <div className="p-3 border-2 border-emerald-500/20 bg-emerald-500/[0.02] rounded-xl space-y-2 relative group/firewall">
-            <div className="flex items-center justify-between mb-1 px-1">
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-emerald-500" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500/80">Decision Firewall</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover/firewall:opacity-100 transition-opacity"
-                onClick={() => {
-                  onDelete(node.id);
-                  onDelete(nextNode.id);
-                }}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
+            <FirewallHeader node={node} onDelete={(id) => { onDelete(node.id); onDelete(nextNode.id); }} />
             <SortableNode
               node={node}
               isSelected={selectedId === node.id}
@@ -295,6 +312,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
               onSelect={onSelect}
               onDelete={onDelete}
               hideDelete
+              hideHandle
             />
             <SortableNode
               node={nextNode}
@@ -304,6 +322,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
               onSelect={onSelect}
               onDelete={onDelete}
               hideDelete
+              hideHandle
             />
           </div>
           {i + 1 < nodes.length - 1 && (
