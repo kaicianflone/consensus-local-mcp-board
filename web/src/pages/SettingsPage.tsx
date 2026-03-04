@@ -706,8 +706,37 @@ export default function SettingsPage() {
     !p.requiresAdapter || adapters[p.id]
   );
 
+  const [activeSection, setActiveSection] = useState('reputation');
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length > 0) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
+    );
+    const sections = document.querySelectorAll('[data-settings-section]');
+    sections.forEach(s => observer.observe(s));
+    return () => observer.disconnect();
+  }, [loading, visibleProviders.length]);
+
+  const sidebarItems = [
+    { id: 'reputation', label: 'Reputation & Slashing', icon: Shield, color: 'text-amber-400' },
+    { id: 'adapters', label: 'Chat Adapters', icon: Package, color: 'text-primary' },
+    ...visibleProviders.map(p => ({ id: `provider-${p.id}`, label: p.name, icon: p.icon, color: p.iconColor })),
+  ];
+
+  function scrollTo(id: string) {
+    const el = document.getElementById(id);
+    if (el) {
+      const y = el.getBoundingClientRect().top + window.scrollY - 80;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto max-w-5xl px-4 py-6">
       <div className="mb-6">
         <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3">
           <ArrowLeft className="h-4 w-4" />
@@ -722,26 +751,57 @@ export default function SettingsPage() {
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : (
-        <div className="space-y-4">
-          {reputationConfig && (
-            <ReputationSettingsSection config={reputationConfig} onSave={handleSaveReputation} />
-          )}
+        <div className="flex gap-6">
+          <nav className="w-48 shrink-0 hidden lg:block">
+            <div className="sticky top-6 space-y-0.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-2">Sections</div>
+              {sidebarItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeSection === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => scrollTo(item.id)}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-sm transition-all ${
+                      isActive
+                        ? 'bg-accent text-foreground font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                    }`}
+                  >
+                    <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? item.color : ''}`} />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
 
-          <ChatAdaptersSection
-            adapters={adapters}
-            onInstall={handleInstall}
-            onUninstall={handleUninstall}
-          />
+          <div className="flex-1 min-w-0 space-y-4">
+            <div id="reputation" data-settings-section>
+              {reputationConfig && (
+                <ReputationSettingsSection config={reputationConfig} onSave={handleSaveReputation} />
+              )}
+            </div>
 
-          {visibleProviders.map((provider) => (
-            <ProviderCard
-              key={provider.id}
-              provider={provider}
-              credentials={credentials}
-              onSave={handleSave}
-              onDelete={handleDelete}
-            />
-          ))}
+            <div id="adapters" data-settings-section>
+              <ChatAdaptersSection
+                adapters={adapters}
+                onInstall={handleInstall}
+                onUninstall={handleUninstall}
+              />
+            </div>
+
+            {visibleProviders.map((provider) => (
+              <div key={provider.id} id={`provider-${provider.id}`} data-settings-section>
+                <ProviderCard
+                  provider={provider}
+                  credentials={credentials}
+                  onSave={handleSave}
+                  onDelete={handleDelete}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
