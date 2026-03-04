@@ -8,7 +8,7 @@ import { redact } from '../utils/redact.js';
 
 const dataDir = path.resolve(process.cwd(), 'data');
 fs.mkdirSync(dataDir, { recursive: true });
-const db = new Database(path.join(dataDir, 'local-board.db'));
+export const db = new Database(path.join(dataDir, 'local-board.db'));
 runMigrations(db);
 
 type Json = Record<string, unknown>;
@@ -165,7 +165,7 @@ export function createParticipant(input: { boardId: string; subjectType: 'agent'
   const id = nanoid();
   const ts = Date.now();
   db.prepare('INSERT INTO participants(id,board_id,subject_type,subject_id,role,weight,reputation,status,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id, input.boardId, input.subjectType, input.subjectId, input.role || 'voter', input.weight ?? 1, input.reputation ?? 0.5, 'active', JSON.stringify(input.metadata || {}), ts, ts);
+    .run(id, input.boardId, input.subjectType, input.subjectId, input.role || 'voter', input.weight ?? 1, input.reputation ?? 100.0, 'active', JSON.stringify(input.metadata || {}), ts, ts);
   return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
 }
 
@@ -173,15 +173,25 @@ export function listParticipants(boardId: string) {
   return db.prepare('SELECT * FROM participants WHERE board_id=? ORDER BY created_at DESC').all(boardId);
 }
 
-export function updateParticipant(id: string, patch: { reputation?: number; weight?: number; role?: string; status?: string }) {
+export function updateParticipant(id: string, patch: { reputation?: number; weight?: number; role?: string; status?: string; metadata?: Record<string, unknown> }) {
   const current = db.prepare('SELECT * FROM participants WHERE id=?').get(id) as any;
   if (!current) return null;
   const reputation = patch.reputation ?? current.reputation;
   const weight = patch.weight ?? current.weight;
   const role = patch.role ?? current.role;
   const status = patch.status ?? current.status;
-  db.prepare('UPDATE participants SET reputation=?, weight=?, role=?, status=?, updated_at=? WHERE id=?').run(reputation, weight, role, status, Date.now(), id);
+  let metadataJson = current.metadata_json || '{}';
+  if (patch.metadata) {
+    const existing = JSON.parse(metadataJson);
+    metadataJson = JSON.stringify({ ...existing, ...patch.metadata });
+  }
+  db.prepare('UPDATE participants SET reputation=?, weight=?, role=?, status=?, metadata_json=?, updated_at=? WHERE id=?').run(reputation, weight, role, status, metadataJson, Date.now(), id);
   return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
+}
+
+export function deleteParticipant(id: string) {
+  const result = db.prepare('DELETE FROM participants WHERE id = ?').run(id);
+  return result.changes > 0;
 }
 
 export function upsertPolicyAssignment(input: { boardId: string; policyId: string; participants: string[]; weightingMode: string; quorum: number }) {

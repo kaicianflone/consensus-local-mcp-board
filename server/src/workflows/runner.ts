@@ -7,10 +7,25 @@ import {
   createWorkflowRun,
   updateWorkflowRunStatus,
   upsertWorkflowRunLink,
-  getWorkflowRunLink
+  getWorkflowRunLink,
+  listParticipants,
+  createParticipant
 } from '../db/store.js';
-import { evaluateWithAiSdk } from '../adapters/ai-sdk.js';
-import { sendHitlPrompt } from '../adapters/chat-sdk.js';
+import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
+import { sendHumanApprovalPrompt } from '../adapters/chat-sdk.js';
+
+const REVIEWER_ARCHETYPES = [
+  'security-reviewer',
+  'performance-analyst',
+  'code-quality-reviewer',
+  'architecture-reviewer',
+  'reliability-engineer',
+  'api-design-reviewer',
+  'data-integrity-analyst',
+  'scalability-reviewer',
+  'compliance-auditor',
+  'ux-impact-reviewer',
+];
 
 type RunOpts = {
   runId?: string;
@@ -38,15 +53,22 @@ export async function runWorkflow(definition: any, workflowId: string, opts: Run
   return executeLocalFlow(definition, workflowId, opts);
 }
 
-export async function resumeWorkflow(definition: any, workflowId: string, runId: string, decision: 'YES' | 'NO', approver = 'human') {
+export async function resumeWorkflow(definition: any, workflowId: string, runId: string, decision: 'YES' | 'NO' | 'REWRITE', approver = 'human') {
   const boardId = String(definition?.boardId || 'workflow-system');
-  appendEvent(boardId, runId, 'WORKFLOW_HITL_DECISION', { workflow_id: workflowId, decision, approver });
+  appendEvent(boardId, runId, 'WORKFLOW_HUMAN_APPROVAL_DECISION', { workflow_id: workflowId, decision, approver });
 
   if (decision === 'NO') {
     appendEvent(boardId, runId, 'WORKFLOW_BLOCKED_BY_HUMAN', { workflow_id: workflowId, approver });
     updateRunStatus(runId, 'BLOCKED');
     updateWorkflowRunStatus(runId, 'BLOCKED');
     return { runId, boardId, blocked: true };
+  }
+
+  if (decision === 'REWRITE') {
+    appendEvent(boardId, runId, 'WORKFLOW_REVISION_REQUESTED', { workflow_id: workflowId, approver });
+    updateRunStatus(runId, 'REVISION_REQUESTED');
+    updateWorkflowRunStatus(runId, 'REVISION_REQUESTED');
+    return { runId, boardId, revisionRequested: true };
   }
 
   const link = getWorkflowRunLink(runId);
@@ -58,7 +80,7 @@ export async function resumeWorkflow(definition: any, workflowId: string, runId:
     }
   }
 
-  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HITL', limit: 1 }) as any[];
+  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HUMAN_APPROVAL', limit: 1 }) as any[];
   const waitPayload = waits[0]?.payload_json ? JSON.parse(String(waits[0].payload_json)) : null;
   const startIndex = typeof waitPayload?.node_index === 'number' ? waitPayload.node_index + 1 : 0;
 
@@ -109,7 +131,7 @@ async function resumeWithDevkit(definition: any, workflowId: string, runId: stri
     approver
   });
 
-  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HITL', limit: 1 }) as any[];
+  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HUMAN_APPROVAL', limit: 1 }) as any[];
   const waitPayload = waits[0]?.payload_json ? JSON.parse(String(waits[0].payload_json)) : null;
   const startIndex = typeof waitPayload?.node_index === 'number' ? waitPayload.node_index + 1 : 0;
 
@@ -194,8 +216,8 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
         output
       });
 
-      if (output?.pause === true && node.type === 'hitl') {
-        appendEvent(boardId, runId, 'WORKFLOW_WAITING_HITL', {
+      if (output?.pause === true && (node.type === 'hitl' || node.type === 'group')) {
+        appendEvent(boardId, runId, 'WORKFLOW_WAITING_HUMAN_APPROVAL', {
           workflow_id: workflowId,
           engine,
           external_run_id: externalRunId,
@@ -252,18 +274,68 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   }
 
   if (node.type === 'agent') {
-    const votes = await evaluateWithAiSdk({
-      runId: ids.runId,
-      boardId: ids.boardId,
-      guardType: 'agent_action',
-      payload: { input: context, prompt: node.config?.prompt || '', nodeConfig: node.config || {} },
-      policy: { policyId: 'agent-node', version: 'v1', quorum: 0.7, riskThreshold: 0.7, hitlRequiredAboveRisk: 0.7, options: {} },
-      idempotencyKey: `${ids.runId}:${node.id}`
-    });
-    return { votes };
+    const agentCount = Math.max(1, Math.min(10, Number(node.config?.agentCount ?? 3)));
+    const personaMode = node.config?.personaMode || 'auto';
+    const model = node.config?.model || 'gpt-4o-mini';
+    const temperature = Number(node.config?.temperature ?? 0);
+    const systemPrompt = node.config?.systemPrompt || '';
+
+    const personas: AgentPersona[] = await resolvePersonas(ids.boardId, agentCount, personaMode, node.config?.personaNames || '');
+
+    const votes = await evaluateWithAiSdk(
+      {
+        runId: ids.runId,
+        boardId: ids.boardId,
+        guardType: 'agent_action',
+        payload: { input: context, prompt: node.config?.prompt || '', nodeConfig: node.config || {} },
+        policy: { policyId: 'agent-node', version: 'v1', quorum: 0.7, riskThreshold: 0.7, hitlRequiredAboveRisk: 0.7, options: {} },
+        idempotencyKey: `${ids.runId}:${node.id}`
+      },
+      { agentCount, personas, model, temperature, systemPrompt }
+    );
+
+    let totalWeight = 0;
+    let weightedRisk = 0;
+    for (let i = 0; i < votes.length; i++) {
+      const rep = personas[i]?.reputation ?? 0.5;
+      totalWeight += rep;
+      weightedRisk += votes[i].risk * rep;
+    }
+    const aggregatedRisk = totalWeight > 0 ? weightedRisk / totalWeight : votes.length > 0 ? votes.reduce((s, v) => s + v.risk, 0) / votes.length : 0.5;
+
+    return { votes, aggregatedRisk, agentCount, personas: personas.map((p) => ({ name: p.name, reputation: p.reputation })) };
   }
 
   if (node.type === 'guard') {
+    const agentOutputs = Object.values(context).filter((v: any) => Array.isArray(v?.votes) && typeof v?.aggregatedRisk === 'number');
+    if (agentOutputs.length > 0) {
+      const allVotes = agentOutputs.flatMap((o: any) => o.votes);
+      const aggregatedRisk = agentOutputs.reduce((sum: number, o: any) => sum + (o.aggregatedRisk || 0), 0) / agentOutputs.length;
+      const yesCount = allVotes.filter((v: any) => v.vote === 'YES').length;
+      const noCount = allVotes.filter((v: any) => v.vote === 'NO').length;
+      const rewriteCount = allVotes.filter((v: any) => v.vote === 'REWRITE').length;
+      const quorum = Number(node.config?.quorum ?? 0.7);
+      const riskThreshold = Number(node.config?.riskThreshold ?? 0.7);
+
+      let decision: 'ALLOW' | 'BLOCK' | 'REWRITE';
+      if (noCount > allVotes.length * (1 - quorum)) {
+        decision = 'BLOCK';
+      } else if (aggregatedRisk > riskThreshold) {
+        decision = 'REWRITE';
+      } else if (rewriteCount > yesCount) {
+        decision = 'REWRITE';
+      } else {
+        decision = 'ALLOW';
+      }
+
+      return {
+        decision,
+        risk: aggregatedRisk,
+        reasons: allVotes.map((v: any) => `[${v.evaluator}] ${v.reason}`),
+        voteSummary: { yes: yesCount, no: noCount, rewrite: rewriteCount, total: allVotes.length }
+      };
+    }
+
     const votes = await evaluateWithAiSdk({
       runId: ids.runId,
       boardId: ids.boardId,
@@ -293,15 +365,56 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     const threshold = Number(node.config?.threshold ?? 0.7);
     if (risk < threshold) return { pause: false, skipped: true, risk, threshold };
 
-    await sendHitlPrompt({
+    const boardParticipants = listParticipants(ids.boardId) as any[];
+    const chatLinkedParticipants = boardParticipants
+      .filter((p: any) => {
+        const meta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
+        return meta.chatAdapter && meta.chatHandle;
+      })
+      .map((p: any) => {
+        const meta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
+        return { subjectId: p.subject_id, adapter: meta.chatAdapter, handle: meta.chatHandle };
+      });
+
+    const promptMode = node.config?.promptMode || 'yes-no';
+    await sendHumanApprovalPrompt({
       boardId: ids.boardId,
       runId: ids.runId,
       quorum: 0.7,
       risk,
       threshold,
-      approverHint: node.config?.approver || 'human'
+      promptMode,
+      approverHint: node.config?.approver || 'human',
+      chatTargets: chatLinkedParticipants.length > 0 ? chatLinkedParticipants : undefined
     });
-    return { pause: true, risk, threshold };
+    return { pause: true, risk, threshold, promptMode, chatTargets: chatLinkedParticipants };
+  }
+
+  if (node.type === 'group') {
+    const children = Array.isArray(node.config?.children) ? node.config.children : [];
+    if (!children.length) return { ok: true, group: true, children: [] };
+
+    const childResults = await Promise.all(
+      children.map((child: any) => executeNode(child, context, ids))
+    );
+
+    const merged: Record<string, any> = {};
+    let hasPause = false;
+    let pauseDetails: any = null;
+    for (let i = 0; i < children.length; i++) {
+      merged[children[i].id] = childResults[i];
+      context[children[i].id] = childResults[i];
+      if (childResults[i]?.pause === true) {
+        hasPause = true;
+        pauseDetails = { childId: children[i].id, childType: children[i].type, ...childResults[i] };
+      }
+    }
+
+    if (hasPause) {
+      return { pause: true, group: true, children: children.map((c: any) => c.id), results: merged, pauseDetails };
+    }
+
+    return { ok: true, group: true, children: children.map((c: any) => c.id), results: merged };
   }
 
   if (node.type === 'action') {
@@ -309,4 +422,65 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   }
 
   return { ok: true };
+}
+
+function parseParticipantMetadata(p: any): Record<string, any> {
+  try {
+    return JSON.parse(p.metadata_json || '{}');
+  } catch {
+    return {};
+  }
+}
+
+async function resolvePersonas(boardId: string, agentCount: number, personaMode: string, personaNamesRaw: string): Promise<AgentPersona[]> {
+  const personas: AgentPersona[] = [];
+
+  if (personaMode === 'manual' && personaNamesRaw.trim()) {
+    const names = personaNamesRaw.split(',').map((n) => n.trim()).filter(Boolean);
+    const existing = listParticipants(boardId) as any[];
+    for (let i = 0; i < agentCount; i++) {
+      const name = names[i % names.length];
+      let participant = existing.find((p: any) => p.subject_id === name);
+      if (!participant) {
+        participant = createParticipant({ boardId, subjectType: 'agent', subjectId: name, role: 'reviewer', weight: 1, reputation: 0.5 });
+      }
+      const meta = parseParticipantMetadata(participant);
+      personas.push({
+        name,
+        reputation: Number(participant?.reputation ?? 0.5),
+        systemPrompt: meta.systemPrompt || undefined,
+        model: meta.model || undefined,
+        temperature: meta.temperature !== undefined ? Number(meta.temperature) : undefined,
+      });
+    }
+  } else {
+    const existing = listParticipants(boardId) as any[];
+    const internalAgents = existing.filter((p: any) => {
+      if (p.subject_type !== 'agent') return false;
+      const meta = parseParticipantMetadata(p);
+      return meta.agentType === 'internal' || !meta.agentType;
+    });
+    for (let i = 0; i < agentCount; i++) {
+      if (i < internalAgents.length) {
+        const p = internalAgents[i];
+        const meta = parseParticipantMetadata(p);
+        personas.push({
+          name: p.subject_id,
+          reputation: Number(p.reputation ?? 0.5),
+          systemPrompt: meta.systemPrompt || undefined,
+          model: meta.model || undefined,
+          temperature: meta.temperature !== undefined ? Number(meta.temperature) : undefined,
+        });
+      } else {
+        const archetype = REVIEWER_ARCHETYPES[i % REVIEWER_ARCHETYPES.length];
+        const alreadyExists = existing.find((p: any) => p.subject_id === archetype);
+        if (!alreadyExists) {
+          createParticipant({ boardId, subjectType: 'agent', subjectId: archetype, role: 'reviewer', weight: 1, reputation: 0.5 });
+        }
+        personas.push({ name: archetype, reputation: Number(alreadyExists?.reputation ?? 0.5) });
+      }
+    }
+  }
+
+  return personas;
 }

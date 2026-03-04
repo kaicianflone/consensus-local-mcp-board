@@ -1,21 +1,30 @@
 {
   "name": "consensus-local-mcp-board",
   "private": true,
+  "type": "module",
   "workspaces": [
+    "shared",
     "server",
-    "web",
-    "shared"
+    "web"
   ],
   "scripts": {
-    "dev": "VERBOSE=1 concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
-    "mcp:dev": "VERBOSE=1 npm --workspace server run mcp:dev",
-    "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build"
+    "dev": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "dev:ui": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "mcp:dev": "npm --workspace server run mcp:dev",
+    "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
-    "concurrently": "^9.0.1"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1"
+    "concurrently": "^9.0.1",
+    "nanoid": "^5.1.6",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.18"
   }
 }

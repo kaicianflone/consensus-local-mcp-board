@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const DecisionSchema = z.enum(['ALLOW', 'BLOCK', 'REWRITE', 'REQUIRE_HUMAN']);
+
 export const GuardTypeSchema = z.enum([
   'send_email',
   'code_merge',
@@ -32,7 +33,7 @@ export const GuardResultSchema = z.object({
   reason: z.string(),
   risk_score: z.number().min(0).max(1),
   suggested_rewrite: z.any().optional(),
-  audit_id: z.string(),
+  audit_id: z.string().optional(),
   next_step: z.object({ tool: z.string(), input: z.any() }).optional(),
   weighted_yes: z.number().min(0).max(1).optional(),
   votes: z.array(GuardVoteSchema).optional(),
@@ -58,14 +59,6 @@ export const GuardEvaluateRequestSchema = z.object({
   idempotencyKey: z.string()
 });
 
-export const HumanDecisionSchema = z.object({
-  decision: z.enum(['YES', 'NO']),
-  approver: z.string(),
-  reason: z.string().optional(),
-  idempotencyKey: z.string(),
-  createdAt: z.string()
-});
-
 export const HumanApprovalRequestSchema = z.object({
   runId: z.string(),
   approver: z.string().default('human'),
@@ -74,6 +67,18 @@ export const HumanApprovalRequestSchema = z.object({
   boardId: z.string().optional()
 });
 
+export const HumanDecisionSchema = z.object({
+  decision: z.enum(['YES', 'NO']),
+  approver: z.string(),
+  reason: z.string().optional(),
+  idempotencyKey: z.string(),
+  createdAt: z.string()
+});
+
+export type Decision = z.infer<typeof DecisionSchema>;
+export type GuardType = z.infer<typeof GuardTypeSchema>;
+export type PolicyMetadata = z.infer<typeof PolicyMetadataSchema>;
+export type GuardVote = z.infer<typeof GuardVoteSchema>;
 export type GuardResult = z.infer<typeof GuardResultSchema>;
 export type EvaluateInput = z.infer<typeof EvaluateInputSchema>;
 export type GuardEvaluateRequest = z.infer<typeof GuardEvaluateRequestSchema>;

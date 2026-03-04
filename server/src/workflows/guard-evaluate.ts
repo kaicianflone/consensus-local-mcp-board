@@ -7,7 +7,7 @@ import {
 } from '@local-mcp-board/shared';
 import { appendEvent, createRun, getRun, updateRunStatus } from '../db/store.js';
 import { evaluateWithAiSdk } from '../adapters/ai-sdk.js';
-import { sendHitlPrompt } from '../adapters/chat-sdk.js';
+import { sendHumanApprovalPrompt } from '../adapters/chat-sdk.js';
 
 const pendingApprovals = new Map<string, HumanDecision>();
 
@@ -46,7 +46,7 @@ export async function executeGuardEvaluate(input: GuardEvaluateRequest) {
     if (!human) {
       const audit = appendEvent(input.boardId, runId, 'FINAL_DECISION', {
         decision: 'REQUIRE_HUMAN',
-        reason: 'Risk requires HITL confirmation',
+        reason: 'Risk requires Human Approval confirmation',
         risk_score: topRisk,
         weighted_yes: weightedYes,
         votes,
@@ -56,7 +56,7 @@ export async function executeGuardEvaluate(input: GuardEvaluateRequest) {
       updateRunStatus(runId, 'WAITING_HUMAN');
       return GuardResultSchema.parse({
         decision: 'REQUIRE_HUMAN',
-        reason: 'Risk requires HITL confirmation',
+        reason: 'Risk requires Human Approval confirmation',
         risk_score: topRisk,
         audit_id: audit.id,
         weighted_yes: weightedYes,
@@ -120,14 +120,14 @@ async function collectVotesStep(input: GuardEvaluateRequest) {
 
 async function requestHumanStep(input: GuardEvaluateRequest, runId: string, quorum: number, risk: number) {
   'use step';
-  const result = await sendHitlPrompt({
+  const result = await sendHumanApprovalPrompt({
     boardId: input.boardId,
     runId,
     quorum,
     risk,
     threshold: input.policy.hitlRequiredAboveRisk
   });
-  appendEvent(input.boardId, runId, 'HITL_REQUESTED', result);
+  appendEvent(input.boardId, runId, 'HUMAN_APPROVAL_REQUESTED', result);
 }
 
 export function normalizeGuardType(type: string): GuardEvaluateRequest['guardType'] {
