@@ -14,7 +14,7 @@ This is a monorepo with three workspaces:
 
 - React 18 + TypeScript + Vite
 - Tailwind CSS 3 with CSS variables for theming (dark mode)
-- **Geist** (sans-serif) and **Geist Mono** (monospace) fonts loaded via Google Fonts
+- **Geist** (sans-serif), **Geist Mono** (monospace), and **Geist Pixel** (header logo) fonts self-hosted from `geist` npm package (woff2 files in `web/public/fonts/`)
 - shadcn/ui-style components (Radix UI primitives + class-variance-authority)
 - Card titles use Vercel-style uppercase labels (11px, medium weight, wide tracking, muted color)
 - @dnd-kit for drag-and-drop sortable workflow nodes

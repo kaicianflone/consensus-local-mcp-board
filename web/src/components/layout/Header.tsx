@@ -20,7 +20,7 @@ export function Header() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20">
               <Workflow className="h-4 w-4 text-primary" />
             </div>
-            <span className="hidden sm:inline">Consensus Board</span>
+            <span className="hidden sm:inline" style={{ fontFamily: "'Geist Pixel', monospace" }}>consensus board</span>
           </Link>
 
           <nav className="flex items-center gap-1">
