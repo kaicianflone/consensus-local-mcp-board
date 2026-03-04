@@ -181,21 +181,21 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
             </FieldLabel>
             <FieldLabel>
               <span className="flex items-center gap-1">
-                Quorum 
-                <span title="Minimum proportion of reviewers that must vote YES for the guard to allow. E.g. 0.7 = 70% must approve.">
+                Quorum (%)
+                <span title="Minimum percentage of reviewers that must vote YES for the guard to allow. E.g. 70 = 70% must approve.">
                   <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
                 </span>
               </span>
-              <Input type="number" step="0.01" min="0" max="1" value={draft.quorum ?? 0.7} onChange={(e) => set('quorum', Number(e.target.value))} />
+              <Input type="number" step="1" min="0" max="100" value={Math.round((draft.quorum ?? 0.7) * 100)} onChange={(e) => set('quorum', Number(e.target.value) / 100)} />
             </FieldLabel>
             <FieldLabel>
               <span className="flex items-center gap-1">
-                Risk Threshold 
-                <span title="If the aggregated risk score from reviewers exceeds this value, the guard flags for rewrite. Lower = stricter.">
+                Risk Threshold (%)
+                <span title="If the aggregated risk score from reviewers exceeds this percentage, the guard flags for rewrite. Lower = stricter.">
                   <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
                 </span>
               </span>
-              <Input type="number" step="0.01" min="0" max="1" value={draft.riskThreshold ?? 0.7} onChange={(e) => set('riskThreshold', Number(e.target.value))} />
+              <Input type="number" step="1" min="0" max="100" value={Math.round((draft.riskThreshold ?? 0.7) * 100)} onChange={(e) => set('riskThreshold', Number(e.target.value) / 100)} />
             </FieldLabel>
             <FieldLabel>Agent Reviewers <Input type="number" min="0" max="20" value={draft.numberOfAgents ?? 3} onChange={(e) => set('numberOfAgents', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>Human Reviewers <Input type="number" min="0" max="10" value={draft.numberOfHumans ?? 0} onChange={(e) => set('numberOfHumans', Number(e.target.value))} /></FieldLabel>

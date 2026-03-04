@@ -370,22 +370,22 @@ app.post('/api/mcp/tool/:name', async (req, res) => {
 
 const DEFAULT_REPUTATION_CONFIG = {
   faucet: {
-    initialReputation: 0.5,
+    initialReputation: 100.0,
     minReputation: 0.0,
-    maxReputation: 1.0,
-    dripAmount: 0.02,
+    maxReputation: 100.0,
+    dripAmount: 2.0,
     dripTrigger: 'consensus_match',
-    decayRate: 0.01,
+    decayRate: 1.0,
     decayInterval: 'per_round',
   },
   slashing: {
     enabled: true,
     rules: [
-      { id: 'consensus_disagree', label: 'Consensus Disagreement', description: 'Agent voted opposite to final consensus outcome', penalty: 0.05, enabled: true },
-      { id: 'low_confidence_wrong', label: 'Low Confidence + Wrong', description: 'Agent had low confidence (<0.3) and voted incorrectly', penalty: 0.08, enabled: true },
-      { id: 'high_risk_miss', label: 'High Risk Miss', description: 'Agent marked low risk on a payload that was blocked', penalty: 0.10, enabled: true },
-      { id: 'timeout', label: 'Response Timeout', description: 'Agent failed to respond within the allotted time', penalty: 0.03, enabled: false },
-      { id: 'repeated_rewrite', label: 'Repeated Rewrite', description: 'Agent requested rewrite 3+ times in a row', penalty: 0.04, enabled: false },
+      { id: 'consensus_disagree', label: 'Consensus Disagreement', description: 'Agent voted opposite to final consensus outcome', penalty: 5.0, enabled: true },
+      { id: 'low_confidence_wrong', label: 'Low Confidence + Wrong', description: 'Agent had low confidence (<0.3) and voted incorrectly', penalty: 8.0, enabled: true },
+      { id: 'high_risk_miss', label: 'High Risk Miss', description: 'Agent marked low risk on a payload that was blocked', penalty: 10.0, enabled: true },
+      { id: 'timeout', label: 'Response Timeout', description: 'Agent failed to respond within the allotted time', penalty: 3.0, enabled: false },
+      { id: 'repeated_rewrite', label: 'Repeated Rewrite', description: 'Agent requested rewrite 3+ times in a row', penalty: 4.0, enabled: false },
     ],
   },
   persona: {

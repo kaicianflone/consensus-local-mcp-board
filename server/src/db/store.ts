@@ -165,7 +165,7 @@ export function createParticipant(input: { boardId: string; subjectType: 'agent'
   const id = nanoid();
   const ts = Date.now();
   db.prepare('INSERT INTO participants(id,board_id,subject_type,subject_id,role,weight,reputation,status,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id, input.boardId, input.subjectType, input.subjectId, input.role || 'voter', input.weight ?? 1, input.reputation ?? 0.5, 'active', JSON.stringify(input.metadata || {}), ts, ts);
+    .run(id, input.boardId, input.subjectType, input.subjectId, input.role || 'voter', input.weight ?? 1, input.reputation ?? 100.0, 'active', JSON.stringify(input.metadata || {}), ts, ts);
   return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
 }
 
