@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Bot, Plus, Save, X, Pencil, UserPlus, Copy, MessageSquare, User } from 'lucide-react';
+import { Bot, Plus, Save, X, Pencil, UserPlus, Copy, MessageSquare, User, Trash2 } from 'lucide-react';
 import { connectAgent, listAgents, listParticipants, createParticipant, updateParticipant, assignPolicy, deleteParticipant } from '../../lib/api';
 
 const CHAT_ADAPTERS = [
