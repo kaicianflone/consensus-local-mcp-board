@@ -13,10 +13,10 @@ const EVENT_ICONS: Record<string, React.ElementType> = {
 
 const EVENT_COLORS: Record<string, string> = {
   GUARD_EVALUATED: 'text-emerald-400',
-  FINAL_DECISION: 'text-blue-400',
-  HUMAN_DECISION: 'text-purple-400',
-  WORKFLOW_STARTED: 'text-amber-400',
-  WORKFLOW_STEP: 'text-muted-foreground',
+  FINAL_DECISION: 'text-emerald-400',
+  HUMAN_DECISION: 'text-emerald-400',
+  WORKFLOW_STARTED: 'text-emerald-400',
+  WORKFLOW_STEP: 'text-emerald-400',
 };
 
 export function EventTimeline() {
