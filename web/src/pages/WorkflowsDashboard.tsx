@@ -181,8 +181,6 @@ export default function WorkflowsDashboard() {
       const guardIdx = updated.findIndex((n) => n.id === id);
       const guardNode = guardIdx >= 0 ? updated[guardIdx] : null;
       if (guardNode && guardNode.type === 'guard' && (config.numberOfAgents != null || config.numberOfHumans != null)) {
-        const desiredAgents = Math.max(0, Math.min(20, Math.floor(Number(config.numberOfAgents)) || 0));
-        const desiredHumans = Math.max(0, Math.min(10, Math.floor(Number(config.numberOfHumans)) || 0));
         const linkedGroup = updated.find((n) =>
           n.type === 'group' && n.config?.linkedGuardId === id
         ) || updated.find((n, i) => i > guardIdx && n.type === 'group');
@@ -191,10 +189,14 @@ export default function WorkflowsDashboard() {
           const currentHitls = linkedGroup.config.children.filter((c: any) => c.type === 'hitl');
           const otherChildren = linkedGroup.config.children.filter((c: any) => c.type !== 'agent' && c.type !== 'hitl');
 
-          const agentsChanged = currentAgents.length !== desiredAgents;
-          const humansChanged = currentHitls.length !== desiredHumans;
+          const desiredAgents = config.numberOfAgents != null
+            ? Math.max(0, Math.min(20, Math.floor(Number(config.numberOfAgents)) || 0))
+            : currentAgents.length;
+          const desiredHumans = config.numberOfHumans != null
+            ? Math.max(0, Math.min(10, Math.floor(Number(config.numberOfHumans)) || 0))
+            : currentHitls.length;
 
-          if (agentsChanged || humansChanged) {
+          if (currentAgents.length !== desiredAgents || currentHitls.length !== desiredHumans) {
             const ts = Date.now().toString(36);
             let newAgents = [...currentAgents];
             if (desiredAgents > currentAgents.length) {
