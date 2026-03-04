@@ -100,9 +100,9 @@ export default function WorkflowsDashboard() {
     const id = `${type}-${Date.now().toString(36)}`;
     const labels: Record<NodeType, string> = {
       trigger: 'Trigger',
-      agent: 'Agent (ai-sdk)',
-      guard: 'Guard (consensus)',
-      hitl: 'HITL (chat-sdk)',
+      agent: 'Agent',
+      guard: 'Guard',
+      hitl: 'HITL',
       group: 'Parallel Group',
       action: 'Action',
     };
