@@ -37,7 +37,7 @@ function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: 
     <div
       className={cn(
         'group relative flex items-center gap-2 rounded-lg border px-3 transition-all cursor-pointer',
-        compact ? 'py-2 flex-1 min-w-0' : 'py-2.5',
+        compact ? 'py-2 flex-1 min-w-0 justify-center' : 'py-2.5',
         NODE_COLORS[node.type] || 'border-border/50 bg-card',
         isSelected && 'ring-1 ring-primary',
       )}
@@ -45,24 +45,28 @@ function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: 
     >
       {Icon && <Icon className={cn('h-4 w-4 shrink-0', NODE_ICON_COLORS[node.type] || 'text-muted-foreground')} />}
 
-      <div className="flex-1 min-w-0">
-        <div className={cn('font-medium truncate', compact ? 'text-xs' : 'text-sm')}>{node.label}</div>
-        <div className="text-xs text-muted-foreground truncate">
-          <span>{node.type}</span>
+      {!compact && (
+        <div className="flex-1 min-w-0">
+          <div className="font-medium truncate text-sm">{node.label}</div>
+          <div className="text-xs text-muted-foreground truncate">
+            <span>{node.type}</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(node.id);
-        }}
-      >
-        <Trash2 className="h-3 w-3" />
-      </Button>
+      {!compact && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(node.id);
+          }}
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      )}
     </div>
   );
 }
