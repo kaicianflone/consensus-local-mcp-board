@@ -17,7 +17,7 @@ import { Play, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 
 function defaults(type: NodeType): Record<string, any> {
   if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, toolAccess: 'restricted', agentCount: 1, personaMode: 'auto', personaNames: '', systemPrompt: '' };
-  if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, policyBinding: 'explicit', numberOfReviewers: 3, weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
+  if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, policyBinding: 'explicit', numberOfAgents: 3, numberOfHumans: 0, weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
   if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', timeoutSec: 900, weightMode: 'weighted', requiredVotes: 2 };
   if (type === 'trigger') return { source: 'github.pr.opened', provider: 'github-mcp', repo: '', branch: 'main', channel: 'slack', chatType: 'group', matchText: '', fromUsers: '' };
   if (type === 'group') return { children: [] };
@@ -109,14 +109,21 @@ export default function WorkflowsDashboard() {
       
       if (type === 'guard') {
         const guardConfig = defaults('guard');
-        const reviewerCount = guardConfig.numberOfReviewers || 3;
+        const agentCount = guardConfig.numberOfAgents || 3;
+        const humanCount = guardConfig.numberOfHumans || 0;
         const ts = Date.now().toString(36);
         const groupId = `group-${ts}`;
-        const agentChildren = Array.from({ length: reviewerCount }, (_, i) => ({
+        const agentChildren = Array.from({ length: agentCount }, (_, i) => ({
           id: `agent-${ts}-${i}`,
           type: 'agent' as NodeType,
           label: 'Agent',
           config: defaults('agent'),
+        }));
+        const hitlChildren = Array.from({ length: humanCount }, (_, i) => ({
+          id: `hitl-${ts}-${i}`,
+          type: 'hitl' as NodeType,
+          label: 'HITL',
+          config: defaults('hitl'),
         }));
         const groupNode = { 
           id: groupId, 
@@ -124,10 +131,7 @@ export default function WorkflowsDashboard() {
           label: 'Parallel Review', 
           config: { 
             linkedGuardId: id,
-            children: [
-              ...agentChildren,
-              { id: `hitl-${ts}`, type: 'hitl', label: 'HITL', config: defaults('hitl') }
-            ] 
+            children: [...agentChildren, ...hitlChildren]
           } 
         };
         return [...nextNodes, groupNode];
@@ -172,33 +176,43 @@ export default function WorkflowsDashboard() {
 
       const guardIdx = updated.findIndex((n) => n.id === id);
       const guardNode = guardIdx >= 0 ? updated[guardIdx] : null;
-      if (guardNode && guardNode.type === 'guard' && config.numberOfReviewers != null) {
-        const desired = Math.max(1, Math.min(20, Math.floor(Number(config.numberOfReviewers)) || 1));
+      if (guardNode && guardNode.type === 'guard' && (config.numberOfAgents != null || config.numberOfHumans != null)) {
+        const desiredAgents = Math.max(0, Math.min(20, Math.floor(Number(config.numberOfAgents)) || 0));
+        const desiredHumans = Math.max(0, Math.min(10, Math.floor(Number(config.numberOfHumans)) || 0));
         const linkedGroup = updated.find((n) =>
           n.type === 'group' && n.config?.linkedGuardId === id
         ) || updated.find((n, i) => i > guardIdx && n.type === 'group');
         if (linkedGroup && Array.isArray(linkedGroup.config?.children)) {
-          const agentChildren = linkedGroup.config.children.filter((c: any) => c.type === 'agent');
-          const nonAgentChildren = linkedGroup.config.children.filter((c: any) => c.type !== 'agent');
+          const currentAgents = linkedGroup.config.children.filter((c: any) => c.type === 'agent');
+          const currentHitls = linkedGroup.config.children.filter((c: any) => c.type === 'hitl');
+          const otherChildren = linkedGroup.config.children.filter((c: any) => c.type !== 'agent' && c.type !== 'hitl');
 
-          if (agentChildren.length !== desired) {
-            let newAgents = [...agentChildren];
+          const agentsChanged = currentAgents.length !== desiredAgents;
+          const humansChanged = currentHitls.length !== desiredHumans;
+
+          if (agentsChanged || humansChanged) {
             const ts = Date.now().toString(36);
-            if (desired > agentChildren.length) {
-              for (let i = agentChildren.length; i < desired; i++) {
-                newAgents.push({
-                  id: `agent-${ts}-${i}`,
-                  type: 'agent',
-                  label: 'Agent',
-                  config: defaults('agent'),
-                });
+            let newAgents = [...currentAgents];
+            if (desiredAgents > currentAgents.length) {
+              for (let i = currentAgents.length; i < desiredAgents; i++) {
+                newAgents.push({ id: `agent-${ts}-${i}`, type: 'agent', label: 'Agent', config: defaults('agent') });
               }
             } else {
-              newAgents = newAgents.slice(0, desired);
+              newAgents = newAgents.slice(0, desiredAgents);
             }
+
+            let newHitls = [...currentHitls];
+            if (desiredHumans > currentHitls.length) {
+              for (let i = currentHitls.length; i < desiredHumans; i++) {
+                newHitls.push({ id: `hitl-${ts}-${i}`, type: 'hitl', label: 'HITL', config: defaults('hitl') });
+              }
+            } else {
+              newHitls = newHitls.slice(0, desiredHumans);
+            }
+
             return updated.map((n) => {
               if (n.id === linkedGroup.id) {
-                return { ...n, config: { ...n.config, children: [...newAgents, ...nonAgentChildren] } };
+                return { ...n, config: { ...n.config, children: [...newAgents, ...newHitls, ...otherChildren] } };
               }
               return n;
             });

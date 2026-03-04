@@ -181,7 +181,10 @@ export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
             <FieldLabel>Quorum <Input type="number" step="0.01" min="0" max="1" value={draft.quorum ?? 0.7} onChange={(e) => set('quorum', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>Risk Threshold <Input type="number" step="0.01" min="0" max="1" value={draft.riskThreshold ?? 0.7} onChange={(e) => set('riskThreshold', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>HITL Threshold <Input type="number" step="0.01" min="0" max="1" value={draft.hitlThreshold ?? 0.7} onChange={(e) => set('hitlThreshold', Number(e.target.value))} /></FieldLabel>
-            <FieldLabel>Number of Reviewers <Input type="number" min="1" max="20" value={draft.numberOfReviewers ?? 3} onChange={(e) => set('numberOfReviewers', Number(e.target.value))} /></FieldLabel>
+            <div className="grid grid-cols-2 gap-2">
+              <FieldLabel>Agent Reviewers <Input type="number" min="0" max="20" value={draft.numberOfAgents ?? 3} onChange={(e) => set('numberOfAgents', Number(e.target.value))} /></FieldLabel>
+              <FieldLabel>Human Reviewers <Input type="number" min="0" max="10" value={draft.numberOfHumans ?? 0} onChange={(e) => set('numberOfHumans', Number(e.target.value))} /></FieldLabel>
+            </div>
           </>
         )}
 
