@@ -141,15 +141,27 @@ export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
         )}
 
         {node.type === 'agent' && (
-          <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
-            <Bot className="h-12 w-12 text-blue-400/50" />
-            <div>
-              <div className="text-sm font-medium">Agent Workflow Node</div>
-              <p className="text-xs text-muted-foreground mt-1 px-4">
-                Configuration for this agent has been moved to the <span className="font-semibold text-foreground">Agents & Participants</span> panel for centralized management.
-              </p>
+          <>
+            <FieldLabel>
+              Assigned Agent Participant
+              <Select value={draft.participantId || ''} onChange={(e) => set('participantId', e.target.value)}>
+                <option value="">-- Select Agent --</option>
+                {participants.filter(p => p.subject_type === 'agent').map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.subject_id}
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
+            <div className="flex flex-col items-center justify-center py-4 text-center space-y-2 border-t mt-4">
+              <Bot className="h-8 w-8 text-blue-400/50" />
+              <div>
+                <p className="text-xs text-muted-foreground px-4">
+                  Detailed agent configuration is managed in the <span className="font-semibold text-foreground">Agents & Participants</span> panel.
+                </p>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
         {node.type === 'guard' && (

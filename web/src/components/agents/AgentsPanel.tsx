@@ -207,51 +207,41 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
         {/* Agents Section */}
         <div className="space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Bot className="h-3 w-3" /> Board Agents
+            <Bot className="h-3 w-3" /> Agents
           </div>
-          {agents.map((agent: any) => {
-            const isParticipant = participants.some((p: any) => p.subject_id === agent.id);
-            return (
-              <div key={agent.id} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-md border border-border/50 bg-accent/30">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                  <span className="text-sm truncate">{agent.name}</span>
-                </div>
-                {!isParticipant && (
+          {agentParticipants.length === 0 && <p className="text-[10px] text-muted-foreground pl-4">No agent participants</p>}
+          {agentParticipants.map((p) => (
+            <ParticipantCard 
+              key={p.id} 
+              p={p} 
+              editingParticipant={editingParticipant} 
+              editDraft={editDraft} 
+              setEditDraft={setEditDraft} 
+              saveEdit={saveEdit} 
+              startEdit={startEdit} 
+              setEditingParticipant={setEditingParticipant}
+              parseMetadata={parseMetadata}
+            />
+          ))}
+          
+          {/* Board Agents (Not yet participants) */}
+          {agents.filter(a => !participants.some(p => p.subject_id === a.id)).length > 0 && (
+            <div className="pt-2 border-t border-dashed">
+              <div className="text-[10px] font-medium text-muted-foreground mb-1">Available to Add</div>
+              {agents.filter(a => !participants.some(p => p.subject_id === a.id)).map((agent: any) => (
+                <div key={agent.id} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-md border border-border/50 bg-accent/30 mb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                    <span className="text-sm truncate">{agent.name}</span>
+                  </div>
                   <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => handleAddParticipant(agent.id)}>
                     <UserPlus className="h-3 w-3" /> Add
                   </Button>
-                )}
-                {isParticipant && <Badge variant="secondary" className="text-[10px]">participant</Badge>}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Active Workflow Agents */}
-        {virtualAgents.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <Bot className="h-3 w-3" /> Active Workflow Agents
+                </div>
+              ))}
             </div>
-            {virtualAgents.map((agent) => (
-              <div key={agent.id} className="flex flex-col gap-1 py-1.5 px-2 rounded-md border border-blue-500/20 bg-blue-500/5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                    <span className="text-xs font-medium truncate">{agent.personaNames}</span>
-                  </div>
-                  <Badge variant="outline" className="text-[9px] bg-blue-500/10 border-blue-500/20 text-blue-400 h-4">
-                    r={agent.reputation}
-                  </Badge>
-                </div>
-                <div className="text-[10px] text-muted-foreground truncate pl-5">
-                  ID: {agent.id} · Weight: {agent.votingWeight}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+          )}
+        </div>
       </CardContent>
 
       <Dialog open={showAddAgent} onOpenChange={setShowAddAgent}>
