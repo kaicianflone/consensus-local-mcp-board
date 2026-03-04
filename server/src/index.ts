@@ -495,27 +495,25 @@ app.post('/api/settings/adapters/install', async (req, res) => {
     const pkg = VALID_ADAPTERS[body.adapter];
     if (!pkg) return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}. Valid: ${Object.keys(VALID_ADAPTERS).join(', ')}`));
 
-    // For UI/UX iteration, we'll mark as installed immediately so the user can see the cards.
-    // In a real app, you'd wait for npm, but here we want speed.
-    upsertCredential(db, 'adapter', body.adapter, 'installed');
+    const rootDir = path.resolve(process.cwd(), '..');
+    let installOutput = '';
+    let installed = false;
+    try {
+      installOutput = execSync(`npm install ${pkg} 2>&1`, { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
+      installed = true;
+    } catch (e: any) {
+      installOutput = e?.stdout || e?.stderr || e?.message || 'Install failed';
+      installed = false;
+    }
+
+    upsertCredential(db, 'adapter', body.adapter, installed ? 'installed' : 'failed');
 
     res.json({
       ok: true,
       adapter: body.adapter,
       package: pkg,
-      installed: true,
-      message: 'Adapter enabled (npm install running in background)',
-    });
-
-    // Run npm install in background without blocking
-    const rootDir = path.resolve(process.cwd(), '..');
-    const { exec } = await import('node:child_process');
-    exec(`npm install ${pkg}`, { cwd: rootDir, timeout: 60000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[adapter] Background install failed for ${pkg}:`, stderr || error.message);
-      } else {
-        console.log(`[adapter] Background install success for ${pkg}`);
-      }
+      installed,
+      output: installOutput.slice(0, 2000),
     });
   } catch (e: any) {
     const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'ADAPTER_INSTALL_FAILED';
