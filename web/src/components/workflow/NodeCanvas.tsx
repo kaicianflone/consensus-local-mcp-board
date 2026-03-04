@@ -47,7 +47,7 @@ function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: 
 
       <div className="flex-1 min-w-0">
         <div className={cn('font-medium truncate', compact ? 'text-xs' : 'text-sm')}>{node.label}</div>
-        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+        <div className="text-xs text-muted-foreground">
           <span>{node.type}</span>
         </div>
       </div>
@@ -178,7 +178,7 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
 
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">{node.label}</div>
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <div className="text-xs text-muted-foreground">
             <span>{node.type}</span>
           </div>
         </div>
