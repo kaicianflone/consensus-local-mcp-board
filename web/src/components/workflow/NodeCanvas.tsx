@@ -49,9 +49,6 @@ function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: 
         <div className={cn('font-medium truncate', compact ? 'text-xs' : 'text-sm')}>{node.label}</div>
         <div className="text-xs text-muted-foreground flex items-center gap-1.5">
           <span>{node.type}</span>
-          {node.type === 'agent' && node.config?.model && (
-            <span className="text-blue-400/80">{node.config.model}</span>
-          )}
         </div>
       </div>
 
@@ -183,9 +180,6 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
           <div className="text-sm font-medium truncate">{node.label}</div>
           <div className="text-xs text-muted-foreground flex items-center gap-1.5">
             <span>{node.type}</span>
-            {node.type === 'agent' && node.config?.model && (
-              <span className="text-blue-400/80">{node.config.model}</span>
-            )}
           </div>
         </div>
 
