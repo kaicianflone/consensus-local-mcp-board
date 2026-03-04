@@ -207,6 +207,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
               startEdit={startEdit} 
               setEditingParticipant={setEditingParticipant}
               parseMetadata={parseMetadata}
+              onDelete={handleDeleteParticipant}
             />
           ))}
         </div>
@@ -228,6 +229,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
               startEdit={startEdit} 
               setEditingParticipant={setEditingParticipant}
               parseMetadata={parseMetadata}
+              onDelete={handleDeleteParticipant}
             />
           ))}
           
@@ -286,25 +288,38 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
   );
 }
 
-function ParticipantCard({ p, editingParticipant, editDraft, setEditDraft, saveEdit, startEdit, setEditingParticipant, parseMetadata }: any) {
+function ParticipantCard({ p, editingParticipant, editDraft, setEditDraft, saveEdit, startEdit, setEditingParticipant, parseMetadata, onDelete }: any) {
   const meta = parseMetadata(p);
   return (
     <div className="rounded-md border border-border/50 px-2 py-1.5 bg-card/50">
       {editingParticipant === p.id ? (
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <Input className="h-7 text-xs flex-1" type="number" step="0.1" value={editDraft.weight} onChange={(e) => setEditDraft({ ...editDraft, weight: e.target.value })} placeholder="Weight" />
-            <Input className="h-7 text-xs flex-1" type="number" step="0.01" value={editDraft.reputation} onChange={(e) => setEditDraft({ ...editDraft, reputation: e.target.value })} placeholder="Reputation" />
+        <div className="space-y-2.5">
+          <div className="text-xs font-medium text-foreground">{p.subject_id}</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Weight</label>
+              <Input className="h-7 text-xs" type="number" step="0.1" value={editDraft.weight} onChange={(e) => setEditDraft({ ...editDraft, weight: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Reputation</label>
+              <Input className="h-7 text-xs" type="number" step="0.01" min="0" max="1" value={editDraft.reputation} onChange={(e) => setEditDraft({ ...editDraft, reputation: e.target.value })} />
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Select className="h-7 text-xs flex-1" value={editDraft.chatAdapter} onChange={(e) => setEditDraft({ ...editDraft, chatAdapter: e.target.value })}>
-              {CHAT_ADAPTERS.map((a) => <option key={a.value} value={a.value}>{a.label || 'Adapter'}</option>)}
-            </Select>
-            <Input className="h-7 text-xs flex-1" value={editDraft.chatHandle} onChange={(e) => setEditDraft({ ...editDraft, chatHandle: e.target.value })} placeholder="Handle" />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Chat Adapter</label>
+              <Select className="h-7 text-xs" value={editDraft.chatAdapter} onChange={(e) => setEditDraft({ ...editDraft, chatAdapter: e.target.value })}>
+                {CHAT_ADAPTERS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Handle / ID</label>
+              <Input className="h-7 text-xs" value={editDraft.chatHandle} onChange={(e) => setEditDraft({ ...editDraft, chatHandle: e.target.value })} placeholder="@user or ID" />
+            </div>
           </div>
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 pt-1">
             <Button size="sm" className="h-6 text-xs" onClick={() => saveEdit(p.id)}><Save className="h-3 w-3 mr-1" /> Save</Button>
-            <Button size="sm" variant="destructive" className="h-6 text-xs" onClick={() => handleDeleteParticipant(p.id)}><Trash2 className="h-3 w-3 mr-1" /> Delete</Button>
+            <Button size="sm" variant="destructive" className="h-6 text-xs" onClick={() => onDelete(p.id)}><Trash2 className="h-3 w-3 mr-1" /> Delete</Button>
             <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setEditingParticipant(null)}>Cancel</Button>
           </div>
         </div>
