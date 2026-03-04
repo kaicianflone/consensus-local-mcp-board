@@ -416,11 +416,13 @@ export default function SettingsPage() {
 
   const handleInstall = async (id: string) => {
     await installAdapter(id);
+    // Force immediate refresh
     await loadAll();
   };
 
   const handleUninstall = async (id: string) => {
     await uninstallAdapter(id);
+    // Force immediate refresh
     await loadAll();
   };
 
