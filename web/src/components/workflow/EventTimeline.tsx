@@ -4,6 +4,7 @@ import { Clock, Shield, Users, Zap, Info, Copy, Check } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { getEvents } from '../../lib/api';
+import { cn } from '../../lib/utils';
 
 const EVENT_ICONS: Record<string, React.ElementType> = {
   GUARD_EVALUATED: Shield,
