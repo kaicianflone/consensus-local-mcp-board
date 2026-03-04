@@ -227,7 +227,7 @@ export function EventTimeline() {
       {hoveredEvent && tooltipRect && (
         <div 
           className={cn(
-            "fixed z-[99999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 w-80 break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left",
+            "fixed z-[99999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 w-80 break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-auto scrollbar-custom shadow-emerald-500/10 text-left",
             hoveredEvent.position === 'top' ? "mb-2" : "mt-2"
           )}
           style={{
