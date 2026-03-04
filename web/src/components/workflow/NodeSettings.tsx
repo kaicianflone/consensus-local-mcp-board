@@ -33,13 +33,14 @@ const TRIGGER_SOURCES = [
 interface NodeSettingsProps {
   node: WorkflowNode | null;
   onUpdate: (id: string, config: Record<string, any>) => void;
+  isGroupChild?: boolean;
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">{children}</label>;
 }
 
-export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
+export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSettingsProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, any>>({});
   const [participants, setParticipants] = useState<any[]>([]);
@@ -194,7 +195,7 @@ export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
               Assigned Participant
               <Select value={draft.participantId || ''} onChange={(e) => set('participantId', e.target.value)}>
                 <option value="">-- Select Participant --</option>
-                {participants.map((p) => (
+                {participants.filter(p => p.subject_type === 'human').map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.subject_id} ({p.subject_type})
                   </option>
@@ -203,12 +204,50 @@ export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
             </FieldLabel>
             <FieldLabel>
               Prompt Mode
-              <Select value={draft.promptMode || 'yes-no'} onChange={(e) => set('promptMode', e.target.value)}>
-                <option value="yes-no">Yes / No</option>
-                <option value="approve-reject-revise">Approve / Reject / Revise</option>
-                <option value="acknowledge">Acknowledge</option>
-              </Select>
+              {isGroupChild ? (
+                <Select value="yes-no" disabled className="opacity-60">
+                  <option value="yes-no">Yes / No</option>
+                </Select>
+              ) : (
+                <Select value={draft.promptMode || 'yes-no'} onChange={(e) => set('promptMode', e.target.value)}>
+                  <option value="yes-no">Yes / No</option>
+                  <option value="approve-reject-revise">Approve / Reject / Revise</option>
+                  <option value="acknowledge">Acknowledge</option>
+                </Select>
+              )}
             </FieldLabel>
+            {isGroupChild && (
+              <>
+                <FieldLabel>
+                  Agent Weight (inherited)
+                  <Input type="number" value={draft.weight ?? 1} disabled className="opacity-60" />
+                </FieldLabel>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="checkbox"
+                    id="weight-override"
+                    checked={!!draft.weightOverride}
+                    onChange={(e) => {
+                      if (!e.target.checked) {
+                        set('weightOverride', false);
+                        set('customWeight', undefined);
+                      } else {
+                        set('weightOverride', true);
+                        set('customWeight', draft.customWeight ?? 1);
+                      }
+                    }}
+                    className="rounded border-border"
+                  />
+                  <label htmlFor="weight-override" className="text-xs text-muted-foreground">Override weight</label>
+                </div>
+                {draft.weightOverride && (
+                  <FieldLabel>
+                    Custom Weight
+                    <Input type="number" step="0.1" min="0" max="10" value={draft.customWeight ?? 1} onChange={(e) => set('customWeight', Number(e.target.value))} />
+                  </FieldLabel>
+                )}
+              </>
+            )}
             <FieldLabel>Timeout (sec) <Input type="number" value={draft.timeoutSec ?? 900} onChange={(e) => set('timeoutSec', Number(e.target.value))} /></FieldLabel>
           </>
         )}

@@ -57,6 +57,10 @@ export default function WorkflowsDashboard() {
   const [boardId] = useState('workflow-system');
 
   const selected = useMemo(() => findNodeById(nodes, selectedId || '') || null, [nodes, selectedId]);
+  const isGroupChild = useMemo(() => {
+    if (!selectedId) return false;
+    return nodes.some(n => n.type === 'group' && Array.isArray(n.config?.children) && n.config.children.some((c: any) => c.id === selectedId));
+  }, [nodes, selectedId]);
 
   async function ensureDefaultBoard() {
     try {
@@ -295,7 +299,7 @@ export default function WorkflowsDashboard() {
         </div>
 
         <div className="lg:col-span-3 flex flex-col">
-          <NodeSettings node={selected} onUpdate={handleUpdateConfig} boardId={boardId} />
+          <NodeSettings node={selected} onUpdate={handleUpdateConfig} boardId={boardId} isGroupChild={isGroupChild} />
         </div>
 
         <div className="lg:col-span-3 flex flex-col">
