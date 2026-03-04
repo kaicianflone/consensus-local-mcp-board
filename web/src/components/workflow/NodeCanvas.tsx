@@ -38,18 +38,18 @@ function NodeContent({ node, isSelected, onSelect, onDelete, compact, width }: {
   return (
     <div
       className={cn(
-        'group relative flex items-center gap-2 rounded-lg border px-3 transition-all cursor-pointer',
-        compact ? 'py-2 flex-1 min-w-0 justify-center' : 'py-2.5',
+        'group relative flex transition-all cursor-pointer rounded-lg border px-3',
+        compact ? 'py-2 flex-1 min-w-0 flex-col items-center justify-center text-center' : 'flex-row items-center gap-2 py-2.5',
         NODE_COLORS[node.type] || 'border-border/50 bg-card',
         isSelected && 'ring-1 ring-primary',
       )}
       onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
     >
-      {Icon && <Icon className={cn('h-4 w-4 shrink-0', NODE_ICON_COLORS[node.type] || 'text-muted-foreground')} />}
+      {Icon && <Icon className={cn('h-4 w-4 shrink-0', NODE_ICON_COLORS[node.type] || 'text-muted-foreground', compact && 'mb-1')} />}
 
       {showLabel && (
-        <div className="flex-1 min-w-0">
-          <div className="font-medium truncate text-sm">{node.label}</div>
+        <div className={cn('min-w-0', compact ? 'w-full' : 'flex-1')}>
+          <div className={cn('font-medium text-sm', compact ? 'break-words leading-tight' : 'truncate')}>{node.label}</div>
           {!compact && (
             <div className="text-xs text-muted-foreground truncate uppercase">
               <span>{node.type === 'hitl' ? 'human approval' : node.type}</span>
