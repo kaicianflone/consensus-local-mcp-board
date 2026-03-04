@@ -168,18 +168,20 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
 
           {node.type === 'guard' && (
             <>
-              <FieldLabel>
-                Guard Type
-                <Select value={draft.guardType || 'code_merge'} onChange={(e) => set('guardType', e.target.value)}>
-                  <option value="code_merge">Code Merge</option>
-                  <option value="send_email">Send Email</option>
-                  <option value="publish">Publish</option>
-                  <option value="support_reply">Support Reply</option>
-                  <option value="agent_action">Agent Action</option>
-                  <option value="deployment">Deployment</option>
-                  <option value="permission_escalation">Permission Escalation</option>
-                </Select>
-              </FieldLabel>
+              <div className="col-span-2">
+                <FieldLabel>
+                  Guard Type
+                  <Select value={draft.guardType || 'code_merge'} onChange={(e) => set('guardType', e.target.value)}>
+                    <option value="code_merge">Code Merge</option>
+                    <option value="send_email">Send Email</option>
+                    <option value="publish">Publish</option>
+                    <option value="support_reply">Support Reply</option>
+                    <option value="agent_action">Agent Action</option>
+                    <option value="deployment">Deployment</option>
+                    <option value="permission_escalation">Permission Escalation</option>
+                  </Select>
+                </FieldLabel>
+              </div>
               <FieldLabel>
                 <span className="flex items-center gap-1">
                   Quorum (%)
@@ -198,8 +200,24 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
                 </span>
                 <Input type="number" step="1" min="0" max="100" value={Math.round((draft.riskThreshold ?? 0.7) * 100)} onChange={(e) => set('riskThreshold', Number(e.target.value) / 100)} />
               </FieldLabel>
-              <FieldLabel>Agent Reviewers <Input type="number" min="0" max="20" value={draft.numberOfAgents ?? 3} onChange={(e) => set('numberOfAgents', Number(e.target.value))} /></FieldLabel>
-              <FieldLabel>Human Reviewers <Input type="number" min="0" max="10" value={draft.numberOfHumans ?? 0} onChange={(e) => set('numberOfHumans', Number(e.target.value))} /></FieldLabel>
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Agent Reviewers
+                  <span title="Number of AI agent reviewers that will evaluate this guard.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
+                </span>
+                <Input type="number" min="0" max="20" value={draft.numberOfAgents ?? 3} onChange={(e) => set('numberOfAgents', Number(e.target.value))} />
+              </FieldLabel>
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Human Reviewers
+                  <span title="Number of human reviewers required for this guard.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
+                </span>
+                <Input type="number" min="0" max="10" value={draft.numberOfHumans ?? 0} onChange={(e) => set('numberOfHumans', Number(e.target.value))} />
+              </FieldLabel>
             </>
           )}
 
