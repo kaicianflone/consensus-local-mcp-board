@@ -24,6 +24,8 @@ export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
   const [widths, setWidths] = useState({ time: 130, type: 110, duration: 70, status: 100 });
   const [hoveredEvent, setHoveredEvent] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [isMouseInTooltip, setIsMouseInTooltip] = useState(false);
+  const hideTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const handleMouseDown = (e: React.MouseEvent, column: keyof typeof widths) => {
     e.preventDefault();
@@ -166,10 +168,22 @@ export function EventTimeline() {
                     </td>
                     <td 
                       className="py-1.5 px-2 align-top relative group/cell text-center"
-                      onMouseMove={(e) => {
+                      onMouseEnter={(e) => {
+                        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
                         setHoveredEvent({ id: event.id, x: e.clientX, y: e.pageY });
                       }}
-                      onMouseLeave={() => setHoveredEvent(null)}
+                      onMouseMove={(e) => {
+                        if (!isMouseInTooltip) {
+                          setHoveredEvent({ id: event.id, x: e.clientX, y: e.pageY });
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        hideTimeoutRef.current = setTimeout(() => {
+                          if (!isMouseInTooltip) {
+                            setHoveredEvent(null);
+                          }
+                        }, 500);
+                      }}
                     >
                       <div className="inline-flex items-center justify-center">
                          <Info className="h-3.5 w-3.5 text-emerald-500/80 cursor-help hover:text-emerald-400 transition-colors" />
@@ -182,8 +196,16 @@ export function EventTimeline() {
                             left: hoveredEvent.x - 400, // Show to the left of the cursor (max-w-sm is 384px)
                             top: Math.min(hoveredEvent.y - 50, window.innerHeight - 300) 
                           }}
-                          onMouseEnter={() => setHoveredEvent({ ...hoveredEvent })}
-                          onMouseLeave={() => setHoveredEvent(null)}
+                          onMouseEnter={() => {
+                            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+                            setIsMouseInTooltip(true);
+                          }}
+                          onMouseLeave={() => {
+                            setIsMouseInTooltip(false);
+                            hideTimeoutRef.current = setTimeout(() => {
+                              setHoveredEvent(null);
+                            }, 500);
+                          }}
                         >
                           {/* Triangle pointer now on the right side */}
                           <div className="absolute -right-2 top-12 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
