@@ -168,53 +168,49 @@ export function EventTimeline() {
                     </td>
                     <td 
                       className="py-1.5 px-2 align-top relative group/cell text-center"
-                      onMouseEnter={(e) => {
-                        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-                        // Only set position on initial entry
-                        if (!hoveredEvent) {
-                          setHoveredEvent({ id: event.id, x: e.clientX, y: e.clientY });
-                        }
-                      }}
-                      onMouseLeave={() => {
-                        hideTimeoutRef.current = setTimeout(() => {
-                          if (!isMouseInTooltip) {
-                            setHoveredEvent(null);
-                          }
-                        }, 500);
-                      }}
                     >
                       <div className="inline-flex items-center justify-center">
-                         <Info className="h-3.5 w-3.5 text-emerald-500/80 cursor-help hover:text-emerald-400 transition-colors" />
+                         <div className="relative">
+                           <Info 
+                             className="h-3.5 w-3.5 text-emerald-500/80 cursor-help hover:text-emerald-400 transition-colors" 
+                             onMouseEnter={() => {
+                               if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+                               setHoveredEvent({ id: event.id, x: 0, y: 0 });
+                             }}
+                             onMouseLeave={() => {
+                               hideTimeoutRef.current = setTimeout(() => {
+                                 if (!isMouseInTooltip) {
+                                   setHoveredEvent(null);
+                                 }
+                               }, 500);
+                             }}
+                           />
+                           
+                           {hoveredEvent?.id === event.id && (
+                             <div 
+                               className="absolute bottom-full right-full mb-2 z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 w-80 break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left"
+                               onMouseEnter={() => {
+                                 if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+                                 setIsMouseInTooltip(true);
+                               }}
+                               onMouseLeave={() => {
+                                 setIsMouseInTooltip(false);
+                                 hideTimeoutRef.current = setTimeout(() => {
+                                   setHoveredEvent(null);
+                                 }, 500);
+                               }}
+                             >
+                               <div className="absolute -right-2 bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
+                               <div className="absolute -right-[7px] bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
+                               
+                               <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center gap-2 sticky top-0 bg-[#030712] z-10">
+                                 <Info className="h-3 w-3" /> Raw Event Data
+                               </div>
+                               {fullInfo}
+                             </div>
+                           )}
+                         </div>
                       </div>
-                      
-                      {hoveredEvent?.id === event.id && (
-                        <div 
-                          className="fixed z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left"
-                          style={{ 
-                            left: hoveredEvent.x - 396, 
-                            top: Math.min(hoveredEvent.y - 48, window.innerHeight - 300) 
-                          }}
-                          onMouseEnter={() => {
-                            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-                            setIsMouseInTooltip(true);
-                          }}
-                          onMouseLeave={() => {
-                            setIsMouseInTooltip(false);
-                            hideTimeoutRef.current = setTimeout(() => {
-                              setHoveredEvent(null);
-                            }, 500);
-                          }}
-                        >
-                          {/* Triangle pointer now on the right side */}
-                          <div className="absolute -right-2 top-12 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
-                          <div className="absolute -right-[7px] top-12 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
-                          
-                          <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center gap-2 sticky top-0 bg-[#030712] z-10">
-                            <Info className="h-3 w-3" /> Raw Event Data
-                          </div>
-                          {fullInfo}
-                        </div>
-                      )}
                     </td>
                   </tr>
                 );
