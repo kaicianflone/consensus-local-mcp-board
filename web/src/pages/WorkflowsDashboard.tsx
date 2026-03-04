@@ -16,7 +16,7 @@ import {
 import { Play, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 
 function defaults(type: NodeType): Record<string, any> {
-  if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, toolAccess: 'restricted', agentCount: 3, personaMode: 'auto', personaNames: '', systemPrompt: '' };
+  if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, toolAccess: 'restricted', agentCount: 1, personaMode: 'auto', personaNames: '', systemPrompt: '' };
   if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, policyBinding: 'explicit', numberOfReviewers: 3, weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
   if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', timeoutSec: 900, weightMode: 'weighted', requiredVotes: 2 };
   if (type === 'trigger') return { source: 'github.pr.opened', provider: 'github-mcp', repo: '', branch: 'main', channel: 'slack', chatType: 'group', matchText: '', fromUsers: '' };

@@ -21,8 +21,9 @@ const TEMPLATE_1 = {
     { id: 'trigger-github-pr', type: 'trigger', label: 'GitHub PR Opened', config: { source: 'github.pr.opened', repo: '', branch: 'main' } },
     { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, numberOfReviewers: 3, policyPack: 'merge-default' } },
     { id: 'parallel-review', type: 'group', label: 'Parallel Review', config: { children: [
-      { id: 'agent-nlm-reviewers', type: 'agent', label: '3 N-LLM Reviewers', config: { agentCount: 3, personaMode: 'auto', model: 'gpt-4o-mini' } },
-      { id: 'hitl-consensus', type: 'hitl', label: 'Consensus Vote', config: { channel: 'slack', requiredVotes: 2, mode: 'weighted-vote' } }
+      { id: 'agent-1', type: 'agent', label: 'Security Reviewer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'security-reviewer', model: 'gpt-4o-mini' } },
+      { id: 'agent-2', type: 'agent', label: 'Performance Analyst', config: { agentCount: 1, personaMode: 'manual', personaNames: 'performance-analyst', model: 'gpt-4o-mini' } },
+      { id: 'agent-3', type: 'agent', label: 'Code Quality', config: { agentCount: 1, personaMode: 'manual', personaNames: 'code-quality-reviewer', model: 'gpt-4o-mini' } }
     ] } },
     { id: 'hitl-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
     { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHitlYes: true, idempotencyKeyFrom: 'pr.sha' } }
