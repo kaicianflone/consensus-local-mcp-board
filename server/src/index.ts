@@ -25,7 +25,7 @@ const TEMPLATE_1 = {
       { id: 'agent-2', type: 'agent', label: 'Performance Analyst', config: { agentCount: 1, personaMode: 'manual', personaNames: 'performance-analyst', model: 'gpt-4o-mini' } },
       { id: 'agent-3', type: 'agent', label: 'Code Quality', config: { agentCount: 1, personaMode: 'manual', personaNames: 'code-quality-reviewer', model: 'gpt-4o-mini' } }
     ] } },
-    { id: 'hitl-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
+    { id: 'human-approval-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
     { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHumanApprovalYes: true, idempotencyKeyFrom: 'pr.sha' } }
   ]
 };
