@@ -232,7 +232,7 @@ export default function WorkflowsDashboard() {
         </div>
 
         <div className="lg:col-span-3 flex flex-col">
-          <NodeSettings node={selected} onUpdate={handleUpdateConfig} />
+          <NodeSettings node={selected} onUpdate={handleUpdateConfig} boardId={boardId} />
         </div>
 
         <div className="lg:col-span-3 flex flex-col">

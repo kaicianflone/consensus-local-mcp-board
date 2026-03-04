@@ -39,9 +39,20 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return <label className="block space-y-1.5 text-xs font-medium text-muted-foreground">{children}</label>;
 }
 
-export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
+export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, any>>({});
+  const [participants, setParticipants] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (boardId) {
+      import('../../lib/api').then(api => {
+        api.listParticipants(boardId).then(d => {
+          setParticipants(d.participants || []);
+        });
+      });
+    }
+  }, [boardId]);
 
   useEffect(() => {
     if (node) {
@@ -203,6 +214,17 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
 
         {node.type === 'hitl' && (
           <>
+            <FieldLabel>
+              Assigned Participant
+              <Select value={draft.participantId || ''} onChange={(e) => set('participantId', e.target.value)}>
+                <option value="">-- Select Participant --</option>
+                {participants.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.subject_id} ({p.subject_type})
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
             <FieldLabel>
               Channel
               <Select value={draft.channel || 'slack'} onChange={(e) => set('channel', e.target.value)}>
