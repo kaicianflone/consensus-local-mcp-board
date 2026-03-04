@@ -11,7 +11,7 @@ import { EventTimeline } from '../components/workflow/EventTimeline';
 import { AgentsPanel } from '../components/agents/AgentsPanel';
 import {
   getWorkflows, getWorkflow, createWorkflow, updateWorkflow,
-  runWorkflow, approveWorkflowRun
+  runWorkflow, approveWorkflowRun, getBoards, createBoard
 } from '../lib/api';
 import {
   Play, Save, FolderOpen, Plus, ChevronDown,
@@ -50,6 +50,17 @@ export default function WorkflowsDashboard() {
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
 
+  async function ensureDefaultBoard() {
+    try {
+      const d = await getBoards();
+      const boards = d.boards || [];
+      const existing = boards.find((b: any) => b.name === 'workflow-system');
+      if (!existing) {
+        await createBoard('workflow-system');
+      }
+    } catch {}
+  }
+
   async function refreshList() {
     try {
       const d = await getWorkflows();
@@ -61,7 +72,7 @@ export default function WorkflowsDashboard() {
     } catch {}
   }
 
-  useEffect(() => { refreshList(); }, []);
+  useEffect(() => { ensureDefaultBoard(); refreshList(); }, []);
 
   async function loadWorkflow(id: string) {
     const d = await getWorkflow(id);
