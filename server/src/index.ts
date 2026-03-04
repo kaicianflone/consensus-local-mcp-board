@@ -122,7 +122,7 @@ app.get('/api/participants', (req, res) => {
 app.patch('/api/participants/:id', (req, res) => {
   try {
     const body = z.object({
-      reputation: z.number().min(0).max(1).optional(),
+      reputation: z.number().min(0).max(100).optional(),
       weight: z.number().min(0).max(100).optional(),
       role: z.string().optional(),
       status: z.enum(['active', 'disabled']).optional(),
