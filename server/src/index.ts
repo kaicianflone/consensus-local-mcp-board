@@ -20,7 +20,7 @@ const TEMPLATE_1 = {
   nodes: [
     { id: 'trigger-github-pr', type: 'trigger', label: 'GitHub PR Opened', config: { source: 'github.pr.opened', repo: '', branch: 'main' } },
     { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, numberOfReviewers: 3, policyPack: 'merge-default' } },
-    { id: 'parallel-review', type: 'group', label: 'Parallel Review', config: { children: [
+    { id: 'parallel-review', type: 'group', label: 'Parallel Review', config: { linkedGuardId: 'guard-code-merge', children: [
       { id: 'agent-1', type: 'agent', label: 'Security Reviewer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'security-reviewer', model: 'gpt-4o-mini' } },
       { id: 'agent-2', type: 'agent', label: 'Performance Analyst', config: { agentCount: 1, personaMode: 'manual', personaNames: 'performance-analyst', model: 'gpt-4o-mini' } },
       { id: 'agent-3', type: 'agent', label: 'Code Quality', config: { agentCount: 1, personaMode: 'manual', personaNames: 'code-quality-reviewer', model: 'gpt-4o-mini' } }
