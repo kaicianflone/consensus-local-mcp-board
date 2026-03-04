@@ -32,6 +32,8 @@ export type AgentPersona = {
   name: string;
   reputation: number;
   systemPrompt?: string;
+  model?: string;
+  temperature?: number;
 };
 
 export async function evaluateWithAiSdk(
@@ -76,13 +78,17 @@ export async function evaluateWithAiSdk(
   }
 
   const openai = createOpenAI({ apiKey });
-  const model = openai(modelId);
+  const defaultModel = openai(modelId);
 
   const personas = options?.personas || [];
   const tasks: Promise<AiVote>[] = [];
 
   for (let i = 0; i < agentCount; i++) {
     const persona = personas[i] || { name: `agent-${i + 1}`, reputation: 0.5 };
+
+    const agentModelId = persona.model || modelId;
+    const agentModel = agentModelId !== modelId ? openai(agentModelId) : defaultModel;
+    const agentTemperature = persona.temperature ?? temperature;
 
     const personaContext = persona.systemPrompt
       ? `You are "${persona.name}" (reputation: ${persona.reputation.toFixed(2)}). ${persona.systemPrompt}`
@@ -102,8 +108,8 @@ export async function evaluateWithAiSdk(
     const task = (async (): Promise<AiVote> => {
       try {
         const result = await generateText({
-          model,
-          temperature,
+          model: agentModel,
+          temperature: agentTemperature,
           messages: [
             { role: 'system', content: 'Output strict JSON only.' },
             { role: 'user', content: prompt }

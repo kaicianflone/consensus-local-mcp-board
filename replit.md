@@ -61,18 +61,32 @@ This is a monorepo with three workspaces:
 - Automatically matches and runs workflows whose trigger node source matches the incoming event
 - Webhook URL displayed on Settings page with copy button
 
-## N-LLM Agent System
+## Agent Types
 
+The system supports two distinct agent types, both managed via the Agents & Participants panel:
+
+### Internal Agents (AI SDK)
+- Run locally on the server using Vercel AI SDK (`ai` + `@ai-sdk/openai`)
+- Created via "+Agent → Internal" — user sets name, model, system prompt, temperature
+- Stored as participants with `metadata_json` containing `{ agentType: 'internal', model, systemPrompt, temperature }`
+- No API key — these execute directly when workflow agent nodes fire
+- Per-agent model/temperature override: each internal agent can use a different model (e.g., one uses gpt-4o-mini, another gpt-4o)
+
+### External Agents (API/Chat-SDK)
+- Remote agents that connect via API key
+- Created via "+Agent → External" — user sets name, chat adapter (Slack/Discord/Teams/etc.), and handle
+- Generates an API key for the external system to call `POST /api/agent/trigger`
+- Stored as participants with `metadata_json` containing `{ agentType: 'external', agentRegistryId, chatAdapter, chatHandle }`
+- Chat adapter/handle enables HITL prompt delivery to the right person on the right platform
+
+### N-LLM Agent Execution
 - Agent nodes support **N parallel LLM evaluators** (configurable 1-10, default 3)
-- Uses Vercel AI SDK (`ai` + `@ai-sdk/openai`) via `generateText` for LLM calls
-- Each agent gets a persona identity with reputation weight from the board's participant system
-- **Persona modes**:
-  - `auto` — picks from existing board participants or auto-creates from reviewer archetypes (security-reviewer, performance-analyst, code-quality-reviewer, architecture-reviewer, etc.)
-  - `manual` — user specifies comma-separated persona names
+- `resolvePersonas()` reads participant metadata to get per-agent model/systemPrompt/temperature
 - Votes are aggregated using reputation-weighted average risk before feeding into the guard node
 - Guard nodes automatically detect upstream agent outputs and use their aggregated votes for consensus decisions
-- Canvas shows agent count badge, model name, and persona mode indicator on agent nodes
-- Agent node settings: Agent Count, Model, System Prompt, Persona Mode, Persona Names, Temperature, Tool Access
+- **Persona modes**:
+  - `auto` — picks from existing board participants (reading their internal agent config) or auto-creates from reviewer archetypes
+  - `manual` — user specifies comma-separated persona names
 
 ## Parallel Group Nodes
 

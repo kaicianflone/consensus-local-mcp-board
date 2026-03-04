@@ -415,6 +415,14 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   return { ok: true };
 }
 
+function parseParticipantMetadata(p: any): Record<string, any> {
+  try {
+    return JSON.parse(p.metadata_json || '{}');
+  } catch {
+    return {};
+  }
+}
+
 async function resolvePersonas(boardId: string, agentCount: number, personaMode: string, personaNamesRaw: string): Promise<AgentPersona[]> {
   const personas: AgentPersona[] = [];
 
@@ -427,15 +435,33 @@ async function resolvePersonas(boardId: string, agentCount: number, personaMode:
       if (!participant) {
         participant = createParticipant({ boardId, subjectType: 'agent', subjectId: name, role: 'reviewer', weight: 1, reputation: 0.5 });
       }
-      personas.push({ name, reputation: Number(participant?.reputation ?? 0.5) });
+      const meta = parseParticipantMetadata(participant);
+      personas.push({
+        name,
+        reputation: Number(participant?.reputation ?? 0.5),
+        systemPrompt: meta.systemPrompt || undefined,
+        model: meta.model || undefined,
+        temperature: meta.temperature !== undefined ? Number(meta.temperature) : undefined,
+      });
     }
   } else {
     const existing = listParticipants(boardId) as any[];
-    const agentParticipants = existing.filter((p: any) => p.subject_type === 'agent');
+    const internalAgents = existing.filter((p: any) => {
+      if (p.subject_type !== 'agent') return false;
+      const meta = parseParticipantMetadata(p);
+      return meta.agentType === 'internal' || !meta.agentType;
+    });
     for (let i = 0; i < agentCount; i++) {
-      if (i < agentParticipants.length) {
-        const p = agentParticipants[i];
-        personas.push({ name: p.subject_id, reputation: Number(p.reputation ?? 0.5) });
+      if (i < internalAgents.length) {
+        const p = internalAgents[i];
+        const meta = parseParticipantMetadata(p);
+        personas.push({
+          name: p.subject_id,
+          reputation: Number(p.reputation ?? 0.5),
+          systemPrompt: meta.systemPrompt || undefined,
+          model: meta.model || undefined,
+          temperature: meta.temperature !== undefined ? Number(meta.temperature) : undefined,
+        });
       } else {
         const archetype = REVIEWER_ARCHETYPES[i % REVIEWER_ARCHETYPES.length];
         const alreadyExists = existing.find((p: any) => p.subject_id === archetype);
