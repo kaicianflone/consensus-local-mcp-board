@@ -21,11 +21,14 @@ interface WorkflowToolbarProps {
   onNew: () => void;
   onRun: () => Promise<void>;
   onLoad: (id: string) => Promise<void>;
+  isSaving?: boolean;
+  saveSuccess?: boolean;
 }
 
 export function WorkflowToolbar({
   name, workflowId, saved,
   onNameChange, onSave, onSaveAs, onNew, onRun, onLoad,
+  isSaving, saveSuccess
 }: WorkflowToolbarProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(name);
@@ -135,10 +138,23 @@ export function WorkflowToolbar({
           <Button
             size="sm"
             variant="ghost"
-            className="gap-1.5 h-7 text-xs"
+            className={`gap-1.5 h-7 text-xs transition-all duration-300 ${saveSuccess ? 'text-emerald-500 bg-emerald-500/10' : ''}`}
             onClick={onSave}
+            disabled={isSaving}
           >
-            <Save className="h-3.5 w-3.5" /> Save
+            {saveSuccess ? (
+              <>
+                <Check className="h-3.5 w-3.5 animate-in zoom-in duration-300" /> Saved
+              </>
+            ) : isSaving ? (
+              <>
+                <div className="h-3.5 w-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /> Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-3.5 w-3.5" /> Save
+              </>
+            )}
           </Button>
 
           <Button

@@ -230,23 +230,44 @@ export default function WorkflowsDashboard() {
     });
   }
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   async function saveWorkflow() {
-    const definition = { boardId, nodes };
-    if (!workflowId) {
-      const out = await createWorkflow(name, definition);
-      setWorkflowId(out.workflow.id);
-    } else {
-      await updateWorkflow(workflowId, { name, definition });
+    try {
+      setIsSaving(true);
+      const definition = { boardId, nodes };
+      if (!workflowId) {
+        const out = await createWorkflow(name, definition);
+        setWorkflowId(out.workflow.id);
+      } else {
+        await updateWorkflow(workflowId, { name, definition });
+      }
+      await refreshList();
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (error) {
+      console.error('Failed to save workflow:', error);
+    } finally {
+      setIsSaving(false);
     }
-    await refreshList();
   }
 
   async function saveAsWorkflow(newName: string) {
-    const definition = { boardId, nodes };
-    const out = await createWorkflow(newName, definition);
-    setWorkflowId(out.workflow.id);
-    setName(newName);
-    await refreshList();
+    try {
+      setIsSaving(true);
+      const definition = { boardId, nodes };
+      const out = await createWorkflow(newName, definition);
+      setWorkflowId(out.workflow.id);
+      setName(newName);
+      await refreshList();
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (error) {
+      console.error('Failed to save as workflow:', error);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function newWorkflow() {
@@ -282,6 +303,8 @@ export default function WorkflowsDashboard() {
         onNew={newWorkflow}
         onRun={executeWorkflow}
         onLoad={loadWorkflow}
+        isSaving={isSaving}
+        saveSuccess={saveSuccess}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
