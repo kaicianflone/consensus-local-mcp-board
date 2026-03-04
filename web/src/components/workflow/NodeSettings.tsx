@@ -70,7 +70,7 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
             <Settings className="h-3.5 w-3.5" /> Node Settings
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex-1 overflow-y-auto">
+        <CardContent className="flex-1 overflow-y-auto scrollbar-custom">
           <p className="text-sm text-muted-foreground">Select a node to configure it.</p>
         </CardContent>
       </Card>
@@ -102,7 +102,7 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
           <Badge variant="secondary">{node.type}</Badge>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto">
+      <CardContent className="flex-1 overflow-y-auto scrollbar-custom">
         <div className="grid grid-cols-2 gap-4">
           {node.type === 'trigger' && (
             <>

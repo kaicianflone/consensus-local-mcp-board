@@ -249,7 +249,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
       <CardHeader className="pb-3">
         <CardTitle>Flow Canvas</CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto">
+      <CardContent className="flex-1 overflow-y-auto scrollbar-custom">
         {!nodes.length && (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed rounded-lg">
             <p className="text-sm">Drop nodes here or click from palette</p>

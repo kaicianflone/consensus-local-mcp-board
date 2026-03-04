@@ -42,7 +42,7 @@ export function EventTimeline() {
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-y-auto scrollbar-thin">
+        <div className="flex-1 overflow-y-auto scrollbar-custom">
           <table className="w-full text-left border-collapse table-fixed">
             <thead className="sticky top-0 bg-muted/50 backdrop-blur-sm z-10 border-b border-border/50">
               <tr>

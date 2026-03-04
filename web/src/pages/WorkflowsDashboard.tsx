@@ -312,7 +312,7 @@ export default function WorkflowsDashboard() {
           <NodePalette onAdd={addNode} />
         </div>
 
-        <div className="lg:col-span-4 flex flex-col">
+        <div className="lg:col-span-4 flex flex-col h-[600px]">
           <NodeCanvas
             nodes={nodes}
             selectedId={selectedId}
@@ -323,11 +323,11 @@ export default function WorkflowsDashboard() {
           />
         </div>
 
-        <div className="lg:col-span-6 flex flex-col gap-4">
+        <div className="lg:col-span-6 flex flex-col gap-4 h-[600px]">
           <div className="flex-none">
             <NodeSettings node={selected} onUpdate={handleUpdateConfig} boardId={boardId} isGroupChild={isGroupChild} />
           </div>
-          <div className="flex-1 min-h-[300px]">
+          <div className="flex-1 min-h-0">
             <EventTimeline />
           </div>
         </div>
