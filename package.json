@@ -1,24 +1,27 @@
 {
-  "name": "@consensus/tools-mcp",
-  "version": "0.1.0",
-  "description": "Consensus.tools MCP Server",
+  "name": "consensus-local-mcp-board",
+  "private": true,
   "type": "module",
-  "main": "dist/server.js",
-  "bin": {
-    "consensus-mcp": "bin/cli.js"
-  },
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
   "scripts": {
-    "dev": "npm run build && node bin/cli.js",
-    "build": "tsup src/index.ts src/server.ts --format esm --dts",
+    "dev": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "dev:ui": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "mcp:dev": "npm --workspace server run mcp:dev",
+    "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "publish": "npm publish --access public"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/node": "^25.3.3",
+    "concurrently": "^9.0.1",
     "nanoid": "^5.1.6",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",

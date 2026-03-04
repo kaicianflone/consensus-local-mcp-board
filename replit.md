@@ -1,31 +1,31 @@
-# Consensus MCP Server
+# Consensus Local MCP Board
 
-Consensus.tools MCP Server packaged as an npm CLI.
+Local-first MCP + Board runtime for the Consensus ecosystem. Provides guard-style decisions, an append-only ledger, and a real-time observability UI.
 
-## Structure
-- `src/server.ts` — MCP server with guard tool registration
-- `src/schemas.ts` — Zod schemas and shared types (Decision, GuardType, PolicyMetadata, etc.)
-- `src/guards.ts` — Guard evaluation engine (send_email, code_merge, publish, support_reply, agent_action, deployment, permission_escalation)
-- `src/voting.ts` — Weighted voting system (tally, quorum, decision computation)
-- `src/agents.ts` — Agent registry (internal/external agents, scope validation)
-- `src/index.ts` — Barrel export for all modules
-- `bin/cli.js` — Executable CLI entry point
-- `dist/` — Compiled JavaScript and type definitions
-
-## Tests
-- `tests/cli.test.ts` — MCP CLI and package configuration tests
-- `tests/guards.test.ts` — Guard evaluation logic tests
-- `tests/voting.test.ts` — Weighted voting system tests
-- `tests/agents.test.ts` — Agent registry and scope validation tests
+## Architecture (Monorepo)
+- `server/` — Express API (port 4010), SQLite DB, evaluation engine, MCP tool registry
+- `web/` — Vite/React UI (port 5000) for workflow visualization, boards, and event timeline
+- `shared/` — Zod schemas and TypeScript contracts shared between server and web
+- `src/` — Core MCP modules (guards, voting, agents, schemas) for the npm CLI package
+- `bin/cli.js` — Executable MCP CLI entry point (stdio)
+- `tests/` — Vitest test suites for guards, voting, agents, and CLI
 
 ## Scripts
-- `npm run build` — Compiles TypeScript to ESM using tsup
-- `npm test` — Runs all tests with vitest
+- `npm run dev:ui` — Starts server + web UI + shared watcher (concurrently)
+- `npm run dev` — Same as dev:ui
+- `npm run mcp:dev` — Starts MCP server in stdio mode
+- `npm run build` — Builds all workspaces (shared → server → web)
+- `npm test` — Runs vitest test suite (78 tests)
 - `npm run test:watch` — Runs tests in watch mode
 
-## Dependencies
+## Workflow
+- **Start application** runs `npm run dev:ui` — serves the web UI on port 5000, API on port 4010
+
+## Key Dependencies
 - `@modelcontextprotocol/sdk` — MCP protocol SDK
 - `zod` — Schema validation
-- `vitest` — Test runner (dev)
-- `tsup` — TypeScript bundler (dev)
-- `typescript` — TypeScript compiler (dev)
+- `express` — API server
+- `better-sqlite3` — Append-only ledger
+- `vite` + `react` — Observability UI
+- `vitest` — Test runner
+- `concurrently` — Multi-process dev runner
