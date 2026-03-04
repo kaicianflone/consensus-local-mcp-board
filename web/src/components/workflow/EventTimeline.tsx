@@ -22,7 +22,7 @@ const EVENT_COLORS: Record<string, string> = {
 
 export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
-  const [widths, setWidths] = useState({ time: 140, type: 120, duration: 80, status: 150 });
+  const [widths, setWidths] = useState({ time: 130, type: 110, duration: 70, status: 100 });
 
   const handleMouseDown = (e: React.MouseEvent, column: keyof typeof widths) => {
     e.preventDefault();
