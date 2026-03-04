@@ -66,8 +66,8 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
     return (
       <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Settings className="h-4 w-4" /> Node Settings
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-3.5 w-3.5" /> Node Settings
           </CardTitle>
         </CardHeader>
         <CardContent className="flex-1 overflow-y-auto">
@@ -96,8 +96,8 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Settings className="h-4 w-4" /> Node Settings
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-3.5 w-3.5" /> Node Settings
           </CardTitle>
           <Badge variant="secondary">{node.type}</Badge>
         </div>

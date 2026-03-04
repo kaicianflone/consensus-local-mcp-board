@@ -193,8 +193,8 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Bot className="h-4 w-4" /> Agents & Participants
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="h-3.5 w-3.5" /> Agents & Participants
           </CardTitle>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={openAddAgent} className="gap-1.5 h-7 text-xs">

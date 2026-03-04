@@ -247,7 +247,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
       }}
     >
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium">Flow Canvas</CardTitle>
+        <CardTitle>Flow Canvas</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
         {!nodes.length && (

@@ -99,8 +99,8 @@ export default function RunDetailPage() {
       {correlations.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Shield className="h-4 w-4" /> Correlation
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-3.5 w-3.5" /> Correlation
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -120,8 +120,8 @@ export default function RunDetailPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Clock className="h-4 w-4" /> Decision Trace
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5" /> Decision Trace
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -144,7 +144,7 @@ export default function RunDetailPage() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium">Run JSON</CardTitle>
+            <CardTitle>Run JSON</CardTitle>
             <Button variant="ghost" size="sm" className="h-7 gap-1.5" onClick={() => setShowRaw(!showRaw)}>
               {showRaw ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               {showRaw ? 'Hide' : 'Show'}

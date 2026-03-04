@@ -37,8 +37,8 @@ export function EventTimeline() {
   return (
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Clock className="h-4 w-4" /> Event Log
+        <CardTitle className="flex items-center gap-2">
+          <Clock className="h-3.5 w-3.5" /> Event Log
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">

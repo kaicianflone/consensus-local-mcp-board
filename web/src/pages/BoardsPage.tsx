@@ -57,7 +57,7 @@ export default function BoardsPage() {
           <Card key={b.id} className="group hover:border-primary/40 transition-colors">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">{b.name}</CardTitle>
+                <CardTitle>{b.name}</CardTitle>
                 <Badge variant="secondary" className="text-[10px]">{b.id}</Badge>
               </div>
             </CardHeader>

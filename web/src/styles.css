@@ -30,11 +30,15 @@
 
   body {
     margin: 0;
-    font-family: Inter, system-ui, -apple-system, sans-serif;
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'Geist Mono', ui-monospace, monospace;
   }
 }
 

@@ -336,8 +336,8 @@ export default function WorkflowsDashboard() {
         <div className="lg:col-span-6 flex flex-col">
           <Card className="flex-1">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Play className="h-4 w-4" /> Workflow Runs
+              <CardTitle className="flex items-center gap-2">
+                <Play className="h-3.5 w-3.5" /> Workflow Runs
               </CardTitle>
             </CardHeader>
             <CardContent>

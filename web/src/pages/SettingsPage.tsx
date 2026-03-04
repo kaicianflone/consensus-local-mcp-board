@@ -293,7 +293,7 @@ function ChatAdaptersSection({
               <Package className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-base">Chat Adapters</CardTitle>
+              <CardTitle>Chat Adapters</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Install chat platform adapters to enable HITL notifications and
                 webhook integrations.
@@ -444,7 +444,7 @@ function ProviderCard({
               <provider.icon className={`h-5 w-5 ${provider.iconColor}`} />
             </div>
             <div>
-              <CardTitle className="text-base">{provider.name}</CardTitle>
+              <CardTitle>{provider.name}</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {provider.description}
               </p>
@@ -683,7 +683,7 @@ function ReputationSettingsSection({
               <Shield className="h-5 w-5 text-amber-400" />
             </div>
             <div>
-              <CardTitle className="text-base">Reputation & Slashing</CardTitle>
+              <CardTitle>Reputation & Slashing</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Configure reputation faucet, slash rules, and persona engine
                 settings.

@@ -41,7 +41,7 @@ export default function BoardDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Runs</CardTitle>
+            <CardTitle>Runs</CardTitle>
           </CardHeader>
           <CardContent>
             {!(board?.runs || []).length && (
@@ -62,8 +62,8 @@ export default function BoardDetailPage() {
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4" /> Event Timeline
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-3.5 w-3.5" /> Event Timeline
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -86,7 +86,7 @@ export default function BoardDetailPage() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium">Raw Board Data</CardTitle>
+            <CardTitle>Raw Board Data</CardTitle>
             <Button variant="ghost" size="sm" className="h-7 gap-1.5" onClick={() => setShowRaw(!showRaw)}>
               {showRaw ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               {showRaw ? 'Hide' : 'Show'}

@@ -38,7 +38,7 @@ export function NodePalette({ onAdd }: NodePaletteProps) {
   return (
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium">Node Palette</CardTitle>
+        <CardTitle>Node Palette</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1.5 flex-1 overflow-y-auto">
         {PALETTE.map((p) => (
