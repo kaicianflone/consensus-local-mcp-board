@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -19,9 +19,10 @@ const CHAT_ADAPTERS = [
 
 interface AgentsPanelProps {
   boardId: string;
+  workflowNodes?: any[];
 }
 
-export function AgentsPanel({ boardId }: AgentsPanelProps) {
+export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
   const [agents, setAgents] = useState<any[]>([]);
   const [participants, setParticipants] = useState<any[]>([]);
   const [showAddAgent, setShowAddAgent] = useState(false);
@@ -29,6 +30,37 @@ export function AgentsPanel({ boardId }: AgentsPanelProps) {
   const [newApiKey, setNewApiKey] = useState('');
   const [editingParticipant, setEditingParticipant] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
+
+  // Extract virtual agents from workflow nodes (including groups)
+  const virtualAgents = useMemo(() => {
+    const list: any[] = [];
+    workflowNodes.forEach(node => {
+      if (node.type === 'agent') {
+        list.push({
+          id: node.id,
+          name: node.label,
+          personaNames: node.config?.personaNames || 'Default Persona',
+          reputation: node.config?.reputation || 0.95,
+          votingWeight: node.config?.votingWeight || 1.0,
+          isVirtual: true
+        });
+      } else if (node.type === 'group' && Array.isArray(node.config?.children)) {
+        node.config.children.forEach((child: any) => {
+          if (child.type === 'agent') {
+            list.push({
+              id: child.id,
+              name: child.label,
+              personaNames: child.config?.personaNames || 'Default Persona',
+              reputation: child.config?.reputation || 0.95,
+              votingWeight: child.config?.votingWeight || 1.0,
+              isVirtual: true
+            });
+          }
+        });
+      }
+    });
+    return list;
+  }, [workflowNodes]);
 
   function parseMetadata(p: any): Record<string, any> {
     try {
@@ -145,6 +177,30 @@ export function AgentsPanel({ boardId }: AgentsPanelProps) {
             </div>
           );
         })}
+
+        {virtualAgents.length > 0 && (
+          <div className="pt-2 space-y-2">
+            <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <Bot className="h-3 w-3" /> Active Workflow Agents
+            </div>
+            {virtualAgents.map((agent) => (
+              <div key={agent.id} className="flex flex-col gap-1 py-1.5 px-2 rounded-md border border-blue-500/20 bg-blue-500/5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                    <span className="text-xs font-medium truncate">{agent.personaNames}</span>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] bg-blue-500/10 border-blue-500/20 text-blue-400 h-4">
+                    r={agent.reputation}
+                  </Badge>
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate pl-5">
+                  ID: {agent.id} · Weight: {agent.votingWeight}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {participants.length > 0 && (
           <div className="pt-2 border-t space-y-2">

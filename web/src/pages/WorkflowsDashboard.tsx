@@ -294,7 +294,7 @@ export default function WorkflowsDashboard() {
         </div>
 
         <div className="lg:col-span-6 flex flex-col">
-          <AgentsPanel boardId={boardId} />
+          <AgentsPanel boardId={boardId} workflowNodes={nodes} />
         </div>
       </div>
     </div>
