@@ -69,7 +69,7 @@ function SortableNode({ node, isSelected, isLast, onSelect, onDelete }: Sortable
           <GripVertical className="h-4 w-4" />
         </button>
 
-        {Icon && <Icon className={cn('h-4 w-4', NODE_ICON_COLORS[node.type])} />}
+        {Icon && <Icon className={cn('h-4 w-4 shrink-0', NODE_ICON_COLORS[node.type])} />}
 
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">{node.label}</div>
