@@ -216,7 +216,7 @@ export default function WorkflowsDashboard() {
             let newHitls = [...currentHitls];
             if (desiredHumans > currentHitls.length) {
               for (let i = currentHitls.length; i < desiredHumans; i++) {
-                newHitls.push({ id: `hitl-${ts}-${i}`, type: 'hitl', label: 'HITL', config: defaults('hitl') });
+                newHitls.push({ id: `hitl-${ts}-${i}`, type: 'hitl', label: 'Human Approval', config: defaults('hitl') });
               }
             } else {
               newHitls = newHitls.slice(0, desiredHumans);
