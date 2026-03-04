@@ -199,19 +199,12 @@ export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
               </Select>
             </FieldLabel>
             <FieldLabel>
-              Channel
-              <Select value={draft.channel || 'slack'} onChange={(e) => set('channel', e.target.value)}>
-                {CHAT_CHANNELS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </Select>
-            </FieldLabel>
-            <FieldLabel>
               Prompt Mode
               <Select value={draft.promptMode || 'yes-no'} onChange={(e) => set('promptMode', e.target.value)}>
                 <option value="yes-no">Yes / No</option>
                 <option value="weighted-vote">Weighted Vote</option>
               </Select>
             </FieldLabel>
-            <FieldLabel>Required Votes <Input type="number" min="1" max="50" value={draft.requiredVotes ?? 2} onChange={(e) => set('requiredVotes', Number(e.target.value))} /></FieldLabel>
             <FieldLabel>Timeout (sec) <Input type="number" value={draft.timeoutSec ?? 900} onChange={(e) => set('timeoutSec', Number(e.target.value))} /></FieldLabel>
           </>
         )}
@@ -250,7 +243,7 @@ const GROUP_CHILD_TYPES: { type: NodeType; label: string }[] = [
 
 function childDefaults(type: NodeType): Record<string, any> {
   if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, agentCount: 3, personaNames: '', systemPrompt: '' };
-  if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', requiredVotes: 2, timeoutSec: 900 };
+  if (type === 'hitl') return { promptMode: 'yes-no', timeoutSec: 900 };
   if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7 };
   return { action: 'noop' };
 }
