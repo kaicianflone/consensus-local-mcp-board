@@ -73,6 +73,7 @@ export function EventTimeline() {
     const utc = date.toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hour12: true });
     return `${tz}\t${local}\nUTC\t${utc}\nRelative\t${getRelativeTime(ts)}`;
   };
+  useEffect(() => {
     async function load() {
       try {
         const d = await getEvents({ limit: 50 });
