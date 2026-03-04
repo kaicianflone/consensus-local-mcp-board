@@ -107,17 +107,26 @@ export default function WorkflowsDashboard() {
       const newNode = { id, type, label: labels[type], config: defaults(type) };
       const nextNodes = [...prev, newNode];
       
-      // If adding a guard, automatically add a group after it
       if (type === 'guard') {
-        const groupId = `group-${Date.now().toString(36)}`;
+        const guardConfig = defaults('guard');
+        const reviewerCount = guardConfig.numberOfReviewers || 3;
+        const ts = Date.now().toString(36);
+        const groupId = `group-${ts}`;
+        const agentChildren = Array.from({ length: reviewerCount }, (_, i) => ({
+          id: `agent-${ts}-${i}`,
+          type: 'agent' as NodeType,
+          label: 'Agent',
+          config: defaults('agent'),
+        }));
         const groupNode = { 
           id: groupId, 
           type: 'group' as NodeType, 
           label: 'Parallel Review', 
           config: { 
+            linkedGuardId: id,
             children: [
-              { id: `agent-${Date.now().toString(36)}`, type: 'agent', label: 'Agent', config: defaults('agent') },
-              { id: `hitl-${Date.now().toString(36)}`, type: 'hitl', label: 'HITL', config: defaults('hitl') }
+              ...agentChildren,
+              { id: `hitl-${ts}`, type: 'hitl', label: 'HITL', config: defaults('hitl') }
             ] 
           } 
         };
@@ -147,18 +156,58 @@ export default function WorkflowsDashboard() {
   }
 
   function handleUpdateConfig(id: string, config: Record<string, any>) {
-    setNodes((prev) => prev.map((n) => {
-      if (n.id === id) return { ...n, config };
-      if (n.type === 'group' && Array.isArray(n.config?.children)) {
-        const childIdx = n.config.children.findIndex((c: any) => c.id === id);
-        if (childIdx >= 0) {
-          const newChildren = [...n.config.children];
-          newChildren[childIdx] = { ...newChildren[childIdx], config };
-          return { ...n, config: { ...n.config, children: newChildren } };
+    setNodes((prev) => {
+      const updated = prev.map((n) => {
+        if (n.id === id) return { ...n, config };
+        if (n.type === 'group' && Array.isArray(n.config?.children)) {
+          const childIdx = n.config.children.findIndex((c: any) => c.id === id);
+          if (childIdx >= 0) {
+            const newChildren = [...n.config.children];
+            newChildren[childIdx] = { ...newChildren[childIdx], config };
+            return { ...n, config: { ...n.config, children: newChildren } };
+          }
+        }
+        return n;
+      });
+
+      const guardIdx = updated.findIndex((n) => n.id === id);
+      const guardNode = guardIdx >= 0 ? updated[guardIdx] : null;
+      if (guardNode && guardNode.type === 'guard' && config.numberOfReviewers != null) {
+        const desired = Math.max(1, Math.min(20, Math.floor(Number(config.numberOfReviewers)) || 1));
+        const linkedGroup = updated.find((n) =>
+          n.type === 'group' && n.config?.linkedGuardId === id
+        ) || updated.find((n, i) => i > guardIdx && n.type === 'group');
+        if (linkedGroup && Array.isArray(linkedGroup.config?.children)) {
+          const agentChildren = linkedGroup.config.children.filter((c: any) => c.type === 'agent');
+          const nonAgentChildren = linkedGroup.config.children.filter((c: any) => c.type !== 'agent');
+
+          if (agentChildren.length !== desired) {
+            let newAgents = [...agentChildren];
+            const ts = Date.now().toString(36);
+            if (desired > agentChildren.length) {
+              for (let i = agentChildren.length; i < desired; i++) {
+                newAgents.push({
+                  id: `agent-${ts}-${i}`,
+                  type: 'agent',
+                  label: 'Agent',
+                  config: defaults('agent'),
+                });
+              }
+            } else {
+              newAgents = newAgents.slice(0, desired);
+            }
+            return updated.map((n) => {
+              if (n.id === linkedGroup.id) {
+                return { ...n, config: { ...n.config, children: [...newAgents, ...nonAgentChildren] } };
+              }
+              return n;
+            });
+          }
         }
       }
-      return n;
-    }));
+
+      return updated;
+    });
   }
 
   async function saveWorkflow() {
