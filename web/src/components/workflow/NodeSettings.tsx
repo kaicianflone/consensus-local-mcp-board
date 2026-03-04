@@ -102,189 +102,193 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
           <Badge variant="secondary">{node.type}</Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4 flex-1 overflow-y-auto">
-        {node.type === 'trigger' && (
-          <>
-            <FieldLabel>
-              Source
-              <Select value={draft.source || 'manual'} onChange={(e) => set('source', e.target.value)}>
-                {TRIGGER_SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </Select>
-            </FieldLabel>
-            {(draft.source || '').startsWith('github.') && (
-              <>
-                <FieldLabel>Provider <Input value={draft.provider || 'github-mcp'} onChange={(e) => set('provider', e.target.value)} /></FieldLabel>
-                <FieldLabel>Repository <Input value={draft.repo || ''} onChange={(e) => set('repo', e.target.value)} placeholder="owner/repo" /></FieldLabel>
-                <FieldLabel>Branch <Input value={draft.branch || 'main'} onChange={(e) => set('branch', e.target.value)} /></FieldLabel>
-              </>
-            )}
-            {(draft.source || '').startsWith('chat.') && (
-              <>
-                <FieldLabel>
-                  Channel
-                  <Select value={draft.channel || 'slack'} onChange={(e) => set('channel', e.target.value)}>
-                    {CHAT_CHANNELS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                  </Select>
-                </FieldLabel>
-                <FieldLabel>
-                  Chat Type
-                  <Select value={draft.chatType || 'group'} onChange={(e) => set('chatType', e.target.value)}>
-                    <option value="group">Group</option>
-                    <option value="direct">Direct</option>
-                    <option value="all">All</option>
-                  </Select>
-                </FieldLabel>
-                <FieldLabel>Match Text <Input value={draft.matchText || ''} onChange={(e) => set('matchText', e.target.value)} placeholder="/merge or #deploy" /></FieldLabel>
-                <FieldLabel>From Users <Input value={draft.fromUsers || ''} onChange={(e) => set('fromUsers', e.target.value)} placeholder="user1, user2" /></FieldLabel>
-              </>
-            )}
-          </>
-        )}
+      <CardContent className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-2 gap-4">
+          {node.type === 'trigger' && (
+            <>
+              <FieldLabel>
+                Source
+                <Select value={draft.source || 'manual'} onChange={(e) => set('source', e.target.value)}>
+                  {TRIGGER_SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </Select>
+              </FieldLabel>
+              {(draft.source || '').startsWith('github.') && (
+                <>
+                  <FieldLabel>Provider <Input value={draft.provider || 'github-mcp'} onChange={(e) => set('provider', e.target.value)} /></FieldLabel>
+                  <FieldLabel>Repository <Input value={draft.repo || ''} onChange={(e) => set('repo', e.target.value)} placeholder="owner/repo" /></FieldLabel>
+                  <FieldLabel>Branch <Input value={draft.branch || 'main'} onChange={(e) => set('branch', e.target.value)} /></FieldLabel>
+                </>
+              )}
+              {(draft.source || '').startsWith('chat.') && (
+                <>
+                  <FieldLabel>
+                    Channel
+                    <Select value={draft.channel || 'slack'} onChange={(e) => set('channel', e.target.value)}>
+                      {CHAT_CHANNELS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </Select>
+                  </FieldLabel>
+                  <FieldLabel>
+                    Chat Type
+                    <Select value={draft.chatType || 'group'} onChange={(e) => set('chatType', e.target.value)}>
+                      <option value="group">Group</option>
+                      <option value="direct">Direct</option>
+                      <option value="all">All</option>
+                    </Select>
+                  </FieldLabel>
+                  <FieldLabel>Match Text <Input value={draft.matchText || ''} onChange={(e) => set('matchText', e.target.value)} placeholder="/merge or #deploy" /></FieldLabel>
+                  <FieldLabel>From Users <Input value={draft.fromUsers || ''} onChange={(e) => set('fromUsers', e.target.value)} placeholder="user1, user2" /></FieldLabel>
+                </>
+              )}
+            </>
+          )}
 
-        {node.type === 'agent' && (
-          <>
-            <FieldLabel>
-              Assigned Agent Participant
-              <Select value={draft.participantId || ''} onChange={(e) => set('participantId', e.target.value)}>
-                <option value="">-- Select Agent --</option>
-                {participants.filter(p => p.subject_type === 'agent').map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.subject_id}
-                  </option>
-                ))}
-              </Select>
-            </FieldLabel>
-            <div className="flex flex-col items-center justify-center py-4 text-center space-y-2 border-t mt-4">
-              <Bot className="h-8 w-8 text-blue-400/50" />
-              <div>
-                <p className="text-xs text-muted-foreground px-4">
-                  Detailed agent configuration is managed in the <span className="font-semibold text-foreground">Agents & Participants</span> panel.
-                </p>
+          {node.type === 'agent' && (
+            <div className="col-span-2 space-y-4">
+              <FieldLabel>
+                Assigned Agent Participant
+                <Select value={draft.participantId || ''} onChange={(e) => set('participantId', e.target.value)}>
+                  <option value="">-- Select Agent --</option>
+                  {participants.filter(p => p.subject_type === 'agent').map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.subject_id}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+              <div className="flex flex-col items-center justify-center py-4 text-center space-y-2 border-t mt-4">
+                <Bot className="h-8 w-8 text-blue-400/50" />
+                <div>
+                  <p className="text-xs text-muted-foreground px-4">
+                    Detailed agent configuration is managed in the <span className="font-semibold text-foreground">Agents & Participants</span> panel.
+                  </p>
+                </div>
               </div>
             </div>
-          </>
-        )}
+          )}
 
-        {node.type === 'guard' && (
-          <>
-            <FieldLabel>
-              Guard Type
-              <Select value={draft.guardType || 'code_merge'} onChange={(e) => set('guardType', e.target.value)}>
-                <option value="code_merge">Code Merge</option>
-                <option value="send_email">Send Email</option>
-                <option value="publish">Publish</option>
-                <option value="support_reply">Support Reply</option>
-                <option value="agent_action">Agent Action</option>
-                <option value="deployment">Deployment</option>
-                <option value="permission_escalation">Permission Escalation</option>
-              </Select>
-            </FieldLabel>
-            <FieldLabel>
-              <span className="flex items-center gap-1">
-                Quorum (%)
-                <span title="Minimum percentage of reviewers that must vote YES for the guard to allow. E.g. 70 = 70% must approve.">
-                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+          {node.type === 'guard' && (
+            <>
+              <FieldLabel>
+                Guard Type
+                <Select value={draft.guardType || 'code_merge'} onChange={(e) => set('guardType', e.target.value)}>
+                  <option value="code_merge">Code Merge</option>
+                  <option value="send_email">Send Email</option>
+                  <option value="publish">Publish</option>
+                  <option value="support_reply">Support Reply</option>
+                  <option value="agent_action">Agent Action</option>
+                  <option value="deployment">Deployment</option>
+                  <option value="permission_escalation">Permission Escalation</option>
+                </Select>
+              </FieldLabel>
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Quorum (%)
+                  <span title="Minimum percentage of reviewers that must vote YES for the guard to allow. E.g. 70 = 70% must approve.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
                 </span>
-              </span>
-              <Input type="number" step="1" min="0" max="100" value={Math.round((draft.quorum ?? 0.7) * 100)} onChange={(e) => set('quorum', Number(e.target.value) / 100)} />
-            </FieldLabel>
-            <FieldLabel>
-              <span className="flex items-center gap-1">
-                Risk Threshold (%)
-                <span title="If the aggregated risk score from reviewers exceeds this percentage, the guard flags for rewrite. Lower = stricter.">
-                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                <Input type="number" step="1" min="0" max="100" value={Math.round((draft.quorum ?? 0.7) * 100)} onChange={(e) => set('quorum', Number(e.target.value) / 100)} />
+              </FieldLabel>
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Risk Threshold (%)
+                  <span title="If the aggregated risk score from reviewers exceeds this percentage, the guard flags for rewrite. Lower = stricter.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
                 </span>
-              </span>
-              <Input type="number" step="1" min="0" max="100" value={Math.round((draft.riskThreshold ?? 0.7) * 100)} onChange={(e) => set('riskThreshold', Number(e.target.value) / 100)} />
-            </FieldLabel>
-            <FieldLabel>Agent Reviewers <Input type="number" min="0" max="20" value={draft.numberOfAgents ?? 3} onChange={(e) => set('numberOfAgents', Number(e.target.value))} /></FieldLabel>
-            <FieldLabel>Human Reviewers <Input type="number" min="0" max="10" value={draft.numberOfHumans ?? 0} onChange={(e) => set('numberOfHumans', Number(e.target.value))} /></FieldLabel>
-          </>
-        )}
+                <Input type="number" step="1" min="0" max="100" value={Math.round((draft.riskThreshold ?? 0.7) * 100)} onChange={(e) => set('riskThreshold', Number(e.target.value) / 100)} />
+              </FieldLabel>
+              <FieldLabel>Agent Reviewers <Input type="number" min="0" max="20" value={draft.numberOfAgents ?? 3} onChange={(e) => set('numberOfAgents', Number(e.target.value))} /></FieldLabel>
+              <FieldLabel>Human Reviewers <Input type="number" min="0" max="10" value={draft.numberOfHumans ?? 0} onChange={(e) => set('numberOfHumans', Number(e.target.value))} /></FieldLabel>
+            </>
+          )}
 
-        {node.type === 'hitl' && (
-          <>
-            <FieldLabel>
-              Assigned Participant
-              <Select value={draft.participantId || ''} onChange={(e) => set('participantId', e.target.value)}>
-                <option value="">-- Select Participant --</option>
-                {participants.filter(p => p.subject_type === 'human').map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.subject_id} ({p.subject_type})
-                  </option>
-                ))}
-              </Select>
-            </FieldLabel>
-            <FieldLabel>
-              Prompt Mode
-              {isGroupChild ? (
-                <Select value="yes-no" disabled className="opacity-60">
-                  <option value="yes-no">Yes / No</option>
+          {node.type === 'hitl' && (
+            <>
+              <FieldLabel>
+                Assigned Participant
+                <Select value={draft.participantId || ''} onChange={(e) => set('participantId', e.target.value)}>
+                  <option value="">-- Select Participant --</option>
+                  {participants.filter(p => p.subject_type === 'human').map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.subject_id} ({p.subject_type})
+                    </option>
+                  ))}
                 </Select>
-              ) : (
-                <Select value={draft.promptMode || 'yes-no'} onChange={(e) => set('promptMode', e.target.value)}>
-                  <option value="yes-no">Yes / No</option>
-                  <option value="approve-reject-revise">Approve / Reject / Revise</option>
-                  <option value="acknowledge">Acknowledge</option>
-                </Select>
-              )}
-            </FieldLabel>
-            {isGroupChild && (
-              <>
-                <FieldLabel>
-                  Agent Weight (inherited)
-                  <Input type="number" value={draft.weight ?? 1} disabled className="opacity-60" />
-                </FieldLabel>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="checkbox"
-                    id="weight-override"
-                    checked={!!draft.weightOverride}
-                    onChange={(e) => {
-                      if (!e.target.checked) {
-                        set('weightOverride', false);
-                        set('customWeight', undefined);
-                      } else {
-                        set('weightOverride', true);
-                        set('customWeight', draft.customWeight ?? 1);
-                      }
-                    }}
-                    className="rounded border-border"
-                  />
-                  <label htmlFor="weight-override" className="text-xs text-muted-foreground">Override weight</label>
-                </div>
-                {draft.weightOverride && (
-                  <FieldLabel>
-                    Custom Weight
-                    <Input type="number" step="0.1" min="0" max="10" value={draft.customWeight ?? 1} onChange={(e) => set('customWeight', Number(e.target.value))} />
-                  </FieldLabel>
+              </FieldLabel>
+              <FieldLabel>
+                Prompt Mode
+                {isGroupChild ? (
+                  <Select value="yes-no" disabled className="opacity-60">
+                    <option value="yes-no">Yes / No</option>
+                  </Select>
+                ) : (
+                  <Select value={draft.promptMode || 'yes-no'} onChange={(e) => set('promptMode', e.target.value)}>
+                    <option value="yes-no">Yes / No</option>
+                    <option value="approve-reject-revise">Approve / Reject / Revise</option>
+                    <option value="acknowledge">Acknowledge</option>
+                  </Select>
                 )}
-              </>
-            )}
-            <FieldLabel>Timeout (sec) <Input type="number" value={draft.timeoutSec ?? 900} onChange={(e) => set('timeoutSec', Number(e.target.value))} /></FieldLabel>
-          </>
-        )}
+              </FieldLabel>
+              {isGroupChild && (
+                <div className="col-span-2 grid grid-cols-2 gap-4">
+                  <FieldLabel>
+                    Agent Weight (inherited)
+                    <Input type="number" value={draft.weight ?? 1} disabled className="opacity-60" />
+                  </FieldLabel>
+                  <div className="flex items-center gap-2 mt-6">
+                    <input
+                      type="checkbox"
+                      id="weight-override"
+                      checked={!!draft.weightOverride}
+                      onChange={(e) => {
+                        if (!e.target.checked) {
+                          set('weightOverride', false);
+                          set('customWeight', undefined);
+                        } else {
+                          set('weightOverride', true);
+                          set('customWeight', draft.customWeight ?? 1);
+                        }
+                      }}
+                      className="rounded border-border"
+                    />
+                    <label htmlFor="weight-override" className="text-xs text-muted-foreground">Override weight</label>
+                  </div>
+                  {draft.weightOverride && (
+                    <FieldLabel>
+                      Custom Weight
+                      <Input type="number" step="0.1" min="0" max="10" value={draft.customWeight ?? 1} onChange={(e) => set('customWeight', Number(e.target.value))} />
+                    </FieldLabel>
+                  )}
+                </div>
+              )}
+              <FieldLabel>Timeout (sec) <Input type="number" value={draft.timeoutSec ?? 900} onChange={(e) => set('timeoutSec', Number(e.target.value))} /></FieldLabel>
+            </>
+          )}
 
-        {node.type === 'action' && (
-          <>
-            <FieldLabel>Action <Input value={draft.action || ''} onChange={(e) => set('action', e.target.value)} placeholder="github.merge_pr" /></FieldLabel>
-          </>
-        )}
+          {node.type === 'action' && (
+            <div className="col-span-2">
+              <FieldLabel>Action <Input value={draft.action || ''} onChange={(e) => set('action', e.target.value)} placeholder="github.merge_pr" /></FieldLabel>
+            </div>
+          )}
 
-        {node.type === 'group' && (
-          <GroupChildrenEditor groupChildren={draft.children || []} onChange={(children) => set('children', children)} />
-        )}
+          {node.type === 'group' && (
+            <div className="col-span-2">
+              <GroupChildrenEditor groupChildren={draft.children || []} onChange={(children) => set('children', children)} />
+            </div>
+          )}
 
-        {editing && (
-          <div className="flex gap-2 pt-2 border-t">
-            <Button size="sm" onClick={handleSave} className="gap-1.5">
-              <Save className="h-3.5 w-3.5" /> Save
-            </Button>
-            <Button size="sm" variant="ghost" onClick={handleCancel} className="gap-1.5">
-              <X className="h-3.5 w-3.5" /> Cancel
-            </Button>
-          </div>
-        )}
+          {editing && (
+            <div className="col-span-2 flex gap-2 pt-2 border-t">
+              <Button size="sm" onClick={handleSave} className="gap-1.5">
+                <Save className="h-3.5 w-3.5" /> Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleCancel} className="gap-1.5">
+                <X className="h-3.5 w-3.5" /> Cancel
+              </Button>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
