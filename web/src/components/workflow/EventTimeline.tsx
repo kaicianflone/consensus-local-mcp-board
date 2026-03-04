@@ -27,6 +27,7 @@ export function EventTimeline() {
   const [widths, setWidths] = useState({ time: 130, type: 110, duration: 70, status: 100 });
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [hoveredEvent, setHoveredEvent] = useState<{ id: string; x: number; y: number; position: 'top' | 'bottom' } | null>(null);
+  const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isMouseInTooltip, setIsMouseInTooltip] = useState(false);
   const hideTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -34,6 +35,7 @@ export function EventTimeline() {
   const handleInfoMouseEnter = (e: React.MouseEvent, eventId: string) => {
     if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
     const rect = e.currentTarget.getBoundingClientRect();
+    setTooltipRect(rect);
     const spaceAbove = rect.top;
     const tooltipHeight = 400; // Estimated max height
     const position = spaceAbove > tooltipHeight ? 'top' : 'bottom';
@@ -202,66 +204,7 @@ export function EventTimeline() {
                              }}
                            />
                            
-                           {hoveredEvent?.id === event.id && (
-                             <div 
-                               className={cn(
-                                 "absolute right-full z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 w-80 break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left",
-                                 hoveredEvent.position === 'top' ? "bottom-full mb-2" : "top-full mt-2"
-                               )}
-                               onMouseEnter={() => {
-                                 if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-                                 setIsMouseInTooltip(true);
-                               }}
-                               onMouseLeave={() => {
-                                 setIsMouseInTooltip(false);
-                                 hideTimeoutRef.current = setTimeout(() => {
-                                   setHoveredEvent(null);
-                                 }, 500);
-                               }}
-                             >
-                               {hoveredEvent.position === 'top' ? (
-                                 <>
-                                   <div className="absolute -right-2 bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
-                                   <div className="absolute -right-[7px] bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
-                                 </>
-                               ) : (
-                                 <>
-                                   <div className="absolute -right-2 top-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
-                                   <div className="absolute -right-[7px] top-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
-                                 </>
-                               )}
-                               
-                               <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center justify-between sticky top-0 bg-[#030712] z-10">
-                                 <div className="flex items-center gap-2">
-                                   <Info className="h-3 w-3" /> Raw Event Data
-                                 </div>
-                                 <Button
-                                   variant="ghost"
-                                   size="icon"
-                                   className="h-6 w-14 gap-1 px-1.5 text-[9px] hover:bg-emerald-500/10 text-emerald-500/80 hover:text-emerald-400 transition-all border border-emerald-500/20"
-                                   onClick={async (e) => {
-                                     e.stopPropagation();
-                                     await navigator.clipboard.writeText(fullInfo);
-                                     setCopiedId(event.id);
-                                     setTimeout(() => setCopiedId(null), 2000);
-                                   }}
-                                 >
-                                   {copiedId === event.id ? (
-                                     <>
-                                       <Check className="h-2.5 w-2.5" />
-                                       <span>Copied</span>
-                                     </>
-                                   ) : (
-                                     <>
-                                       <Copy className="h-2.5 w-2.5" />
-                                       <span>Copy</span>
-                                     </>
-                                   )}
-                                 </Button>
-                               </div>
-                               {fullInfo}
-                             </div>
-                           )}
+                           {/* Tooltip removed from here and moved to fixed portal-like container at the bottom */}
                          </div>
                       </div>
                     </td>
@@ -270,7 +213,7 @@ export function EventTimeline() {
               })}
               {!events.length && (
                 <tr>
-                  <td colSpan={3} className="py-8 text-center text-[10px] text-muted-foreground">
+                  <td colSpan={5} className="py-8 text-center text-[10px] text-muted-foreground">
                     No events recorded.
                   </td>
                 </tr>
@@ -279,6 +222,95 @@ export function EventTimeline() {
           </table>
         </div>
       </CardContent>
+
+      {/* Global Portal-like Tooltip */}
+      {hoveredEvent && tooltipRect && (
+        <div 
+          className={cn(
+            "fixed z-[99999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 w-80 break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left",
+            hoveredEvent.position === 'top' ? "mb-2" : "mt-2"
+          )}
+          style={{
+            left: Math.max(10, tooltipRect.left - 325),
+            top: hoveredEvent.position === 'top' 
+              ? tooltipRect.top
+              : tooltipRect.bottom,
+            transform: hoveredEvent.position === 'top' ? 'translateY(-100%)' : 'none'
+          }}
+          onMouseEnter={() => {
+            if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+            setIsMouseInTooltip(true);
+          }}
+          onMouseLeave={() => {
+            setIsMouseInTooltip(false);
+            hideTimeoutRef.current = setTimeout(() => {
+              setHoveredEvent(null);
+            }, 500);
+          }}
+        >
+          {hoveredEvent.position === 'top' ? (
+            <>
+              <div 
+                className="absolute -right-2 bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" 
+              />
+              <div 
+                className="absolute -right-[7px] bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" 
+              />
+            </>
+          ) : (
+            <>
+              <div className="absolute -right-2 top-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
+              <div className="absolute -right-[7px] top-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
+            </>
+          )}
+          
+          <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center justify-between sticky top-0 bg-[#030712] z-10">
+            <div className="flex items-center gap-2">
+              <Info className="h-3 w-3" /> Raw Event Data
+            </div>
+            {(() => {
+              const event = events.find(e => e.id === hoveredEvent.id);
+              if (!event) return null;
+              let payload = {};
+              try { payload = event.payload_json ? JSON.parse(event.payload_json) : {}; } catch {}
+              const fullInfo = JSON.stringify(payload, null, 2);
+              
+              return (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-14 gap-1 px-1.5 text-[9px] hover:bg-emerald-500/10 text-emerald-500/80 hover:text-emerald-400 transition-all border border-emerald-500/20"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await navigator.clipboard.writeText(fullInfo);
+                    setCopiedId(event.id);
+                    setTimeout(() => setCopiedId(null), 2000);
+                  }}
+                >
+                  {copiedId === event.id ? (
+                    <>
+                      <Check className="h-2.5 w-2.5" />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-2.5 w-2.5" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </Button>
+              );
+            })()}
+          </div>
+          {(() => {
+            const event = events.find(e => e.id === hoveredEvent.id);
+            if (!event) return null;
+            let payload = {};
+            try { payload = event.payload_json ? JSON.parse(event.payload_json) : {}; } catch {}
+            return JSON.stringify(payload, null, 2);
+          })()}
+        </div>
+      )}
     </Card>
   );
 }
