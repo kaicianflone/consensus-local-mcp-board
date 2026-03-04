@@ -53,18 +53,6 @@ function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: 
             <span className="text-blue-400/80">{node.config.model}</span>
           )}
         </div>
-        {node.type === 'agent' && (
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {node.config?.agentCount && (
-              <span className="inline-flex items-center rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
-                {node.config.agentCount} agents
-              </span>
-            )}
-            <span className="inline-flex items-center rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-400/70">
-              {node.config?.personaMode === 'manual' ? 'manual personas' : 'auto personas'}
-            </span>
-          </div>
-        )}
       </div>
 
       <Button
@@ -199,18 +187,6 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
               <span className="text-blue-400/80">{node.config.model}</span>
             )}
           </div>
-          {node.type === 'agent' && (
-            <div className="flex items-center gap-1.5 mt-0.5">
-              {node.config?.agentCount && (
-                <span className="inline-flex items-center rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
-                  {node.config.agentCount} agents
-                </span>
-              )}
-              <span className="inline-flex items-center rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-400/70">
-                {node.config?.personaMode === 'manual' ? 'manual personas' : 'auto personas'}
-              </span>
-            </div>
-          )}
         </div>
 
         <Button
