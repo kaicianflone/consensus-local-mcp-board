@@ -37,11 +37,11 @@ function validateWorkflowDefinition(definition: any) {
 
   const allowedNext: Record<string, string[]> = {
     trigger: ['agent', 'guard', 'action', 'group'],
-    agent: ['guard', 'hitl', 'action', 'group'],
-    guard: ['hitl', 'action', 'group'],
-    hitl: ['hitl', 'action', 'guard'],
-    action: ['action'],
-    group: ['hitl', 'action', 'guard']
+    agent: ['agent', 'guard', 'hitl', 'action', 'group'],
+    guard: ['agent', 'guard', 'hitl', 'action', 'group'],
+    hitl: ['agent', 'guard', 'hitl', 'action', 'group'],
+    action: ['agent', 'guard', 'hitl', 'action', 'group'],
+    group: ['agent', 'guard', 'hitl', 'action', 'group']
   };
 
   for (let i = 0; i < nodes.length; i++) {
