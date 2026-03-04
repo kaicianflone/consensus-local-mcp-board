@@ -64,7 +64,7 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
 
   if (!node) {
     return (
-      <Card className="h-full flex flex-col">
+      <Card className="flex flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-3.5 w-3.5" /> Node Settings
@@ -93,7 +93,7 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
   }
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
