@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
-import { Settings, Save, X, Plus, Trash2 } from 'lucide-react';
+import { Settings, Save, X, Plus, Trash2, Bot } from 'lucide-react';
 import type { WorkflowNode } from './NodeCanvas';
 import { NODE_ICON_COLORS, PALETTE, type NodeType } from './NodePalette';
 
