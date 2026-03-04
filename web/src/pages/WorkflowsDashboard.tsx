@@ -102,7 +102,30 @@ export default function WorkflowsDashboard() {
       group: 'Parallel Group',
       action: 'Action',
     };
-    setNodes((prev) => [...prev, { id, type, label: labels[type], config: defaults(type) }]);
+    
+    setNodes((prev) => {
+      const newNode = { id, type, label: labels[type], config: defaults(type) };
+      const nextNodes = [...prev, newNode];
+      
+      // If adding a guard, automatically add a group after it
+      if (type === 'guard') {
+        const groupId = `group-${Date.now().toString(36)}`;
+        const groupNode = { 
+          id: groupId, 
+          type: 'group' as NodeType, 
+          label: 'Parallel Review', 
+          config: { 
+            children: [
+              { id: `agent-${Date.now().toString(36)}`, type: 'agent', label: 'Agent', config: defaults('agent') },
+              { id: `hitl-${Date.now().toString(36)}`, type: 'hitl', label: 'HITL', config: defaults('hitl') }
+            ] 
+          } 
+        };
+        return [...nextNodes, groupNode];
+      }
+      
+      return nextNodes;
+    });
     setSelectedId(id);
   }
 
