@@ -2,21 +2,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { NodePalette, type NodeType } from '../components/workflow/NodePalette';
 import { NodeCanvas, type WorkflowNode } from '../components/workflow/NodeCanvas';
 import { NodeSettings } from '../components/workflow/NodeSettings';
 import { EventTimeline } from '../components/workflow/EventTimeline';
 import { AgentsPanel } from '../components/agents/AgentsPanel';
+import { WorkflowToolbar } from '../components/workflow/WorkflowToolbar';
 import {
   getWorkflows, getWorkflow, createWorkflow, updateWorkflow,
   runWorkflow, approveWorkflowRun, getBoards, createBoard
 } from '../lib/api';
-import {
-  Play, Save, FolderOpen, Plus, ChevronDown,
-  CheckCircle, Clock, AlertTriangle, LayoutGrid
-} from 'lucide-react';
+import { Play, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 
 function defaults(type: NodeType): Record<string, any> {
   if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, toolAccess: 'restricted' };
@@ -46,7 +43,6 @@ export default function WorkflowsDashboard() {
   const [saved, setSaved] = useState<any[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
   const [boardId] = useState('workflow-system');
-  const [showSaved, setShowSaved] = useState(false);
 
   const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
 
@@ -118,6 +114,22 @@ export default function WorkflowsDashboard() {
     await refreshList();
   }
 
+  async function saveAsWorkflow(newName: string) {
+    const definition = { boardId, nodes };
+    const out = await createWorkflow(newName, definition);
+    setWorkflowId(out.workflow.id);
+    setName(newName);
+    await refreshList();
+  }
+
+  function newWorkflow() {
+    setWorkflowId(null);
+    setName('Untitled Workflow');
+    setNodes([]);
+    setRuns([]);
+    setSelectedId(null);
+  }
+
   async function executeWorkflow() {
     if (!workflowId) return;
     await runWorkflow(workflowId);
@@ -133,51 +145,17 @@ export default function WorkflowsDashboard() {
 
   return (
     <div className="mx-auto max-w-screen-2xl p-4 space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <LayoutGrid className="h-5 w-5 text-primary" />
-          <h1 className="text-xl font-semibold">Workflow Dashboard</h1>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Workflow name"
-            className="w-48 h-8 text-sm"
-          />
-          <Button size="sm" variant="outline" onClick={saveWorkflow} className="gap-1.5">
-            <Save className="h-3.5 w-3.5" /> Save
-          </Button>
-          <Button size="sm" onClick={executeWorkflow} disabled={!workflowId} className="gap-1.5">
-            <Play className="h-3.5 w-3.5" /> Run
-          </Button>
-          <div className="relative">
-            <Button size="sm" variant="outline" onClick={() => setShowSaved(!showSaved)} className="gap-1.5">
-              <FolderOpen className="h-3.5 w-3.5" /> Load
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-            {showSaved && (
-              <div className="absolute right-0 top-full mt-1 w-64 bg-card border rounded-lg shadow-lg z-30 py-1">
-                {saved.map((w: any) => (
-                  <button
-                    key={w.id}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors truncate"
-                    onClick={() => loadWorkflow(w.id)}
-                  >
-                    {w.name}
-                  </button>
-                ))}
-                {!saved.length && <div className="px-3 py-2 text-sm text-muted-foreground">No saved workflows</div>}
-              </div>
-            )}
-          </div>
-          {workflowId && (
-            <Badge variant="secondary" className="text-xs">
-              {workflowId}
-            </Badge>
-          )}
-        </div>
-      </div>
+      <WorkflowToolbar
+        name={name}
+        workflowId={workflowId}
+        saved={saved}
+        onNameChange={(n) => { setName(n); if (workflowId) updateWorkflow(workflowId, { name: n }).then(refreshList); }}
+        onSave={saveWorkflow}
+        onSaveAs={saveAsWorkflow}
+        onNew={newWorkflow}
+        onRun={executeWorkflow}
+        onLoad={loadWorkflow}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         <div className="lg:col-span-2">
