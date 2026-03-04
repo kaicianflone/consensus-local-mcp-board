@@ -441,6 +441,94 @@ app.post('/api/mcp/tool/:name', async (req, res) => {
   }
 });
 
+// ── Reputation & Slashing Settings API ──
+
+const DEFAULT_REPUTATION_CONFIG = {
+  faucet: {
+    initialReputation: 0.5,
+    minReputation: 0.0,
+    maxReputation: 1.0,
+    dripAmount: 0.02,
+    dripTrigger: 'consensus_match',
+    decayRate: 0.01,
+    decayInterval: 'per_round',
+  },
+  slashing: {
+    enabled: true,
+    rules: [
+      { id: 'consensus_disagree', label: 'Consensus Disagreement', description: 'Agent voted opposite to final consensus outcome', penalty: 0.05, enabled: true },
+      { id: 'low_confidence_wrong', label: 'Low Confidence + Wrong', description: 'Agent had low confidence (<0.3) and voted incorrectly', penalty: 0.08, enabled: true },
+      { id: 'high_risk_miss', label: 'High Risk Miss', description: 'Agent marked low risk on a payload that was blocked', penalty: 0.10, enabled: true },
+      { id: 'timeout', label: 'Response Timeout', description: 'Agent failed to respond within the allotted time', penalty: 0.03, enabled: false },
+      { id: 'repeated_rewrite', label: 'Repeated Rewrite', description: 'Agent requested rewrite 3+ times in a row', penalty: 0.04, enabled: false },
+    ],
+  },
+  persona: {
+    archetypeBonus: 0.05,
+    diversityWeight: 0.1,
+    minPersonasForBonus: 3,
+  },
+};
+
+function getReputationConfig(): typeof DEFAULT_REPUTATION_CONFIG {
+  db.exec("CREATE TABLE IF NOT EXISTS _internal_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  const row = db.prepare("SELECT value FROM _internal_config WHERE key = 'reputation_config'").get() as { value: string } | undefined;
+  if (row) {
+    try {
+      const stored = JSON.parse(row.value);
+      const storedRules = Array.isArray(stored.slashing?.rules) ? stored.slashing.rules : [];
+      const mergedRules = DEFAULT_REPUTATION_CONFIG.slashing.rules.map(defaultRule => {
+        const override = storedRules.find((r: any) => r.id === defaultRule.id);
+        return override ? { ...defaultRule, ...override } : defaultRule;
+      });
+      return {
+        faucet: { ...DEFAULT_REPUTATION_CONFIG.faucet, ...(stored.faucet || {}) },
+        slashing: {
+          enabled: stored.slashing?.enabled ?? DEFAULT_REPUTATION_CONFIG.slashing.enabled,
+          rules: mergedRules,
+        },
+        persona: { ...DEFAULT_REPUTATION_CONFIG.persona, ...(stored.persona || {}) },
+      };
+    } catch {
+      return DEFAULT_REPUTATION_CONFIG;
+    }
+  }
+  return DEFAULT_REPUTATION_CONFIG;
+}
+
+function saveReputationConfig(config: any) {
+  db.exec("CREATE TABLE IF NOT EXISTS _internal_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  const existing = db.prepare("SELECT key FROM _internal_config WHERE key = 'reputation_config'").get();
+  const json = JSON.stringify(config);
+  if (existing) {
+    db.prepare("UPDATE _internal_config SET value = ? WHERE key = 'reputation_config'").run(json);
+  } else {
+    db.prepare("INSERT INTO _internal_config(key, value) VALUES (?, ?)").run('reputation_config', json);
+  }
+}
+
+app.get('/api/settings/reputation', (_req, res) => {
+  try {
+    res.json({ config: getReputationConfig() });
+  } catch (e: any) {
+    res.status(500).json(err('REPUTATION_CONFIG_FAILED', 'Failed to load reputation config', e?.message));
+  }
+});
+
+app.put('/api/settings/reputation', (req, res) => {
+  try {
+    const current = getReputationConfig();
+    const merged = { ...current, ...req.body };
+    if (req.body.faucet) merged.faucet = { ...current.faucet, ...req.body.faucet };
+    if (req.body.slashing) merged.slashing = { ...current.slashing, ...req.body.slashing };
+    if (req.body.persona) merged.persona = { ...current.persona, ...req.body.persona };
+    saveReputationConfig(merged);
+    res.json({ config: merged });
+  } catch (e: any) {
+    res.status(400).json(err('REPUTATION_CONFIG_UPDATE_FAILED', 'Failed to update reputation config', e?.message));
+  }
+});
+
 // ── Credentials Settings API ──
 
 app.get('/api/settings/credentials', (_req, res) => {

@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, Github, MessageSquare, Brain, Sparkles, Eye, EyeOff, Save, Trash2, CheckCircle2, XCircle, Copy, Check, Webhook, Download, Package, Loader2, Hash, Radio, Send, AtSign } from 'lucide-react';
+import { ArrowLeft, Github, MessageSquare, Brain, Sparkles, Eye, EyeOff, Save, Trash2, CheckCircle2, XCircle, Copy, Check, Webhook, Download, Package, Loader2, Hash, Radio, Send, AtSign, Shield, Droplets, Sword, Users, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
-import { getCredentialsList, upsertCredential, deleteCredential, getAdapters, installAdapter, uninstallAdapter } from '../lib/api';
+import { Select } from '../components/ui/select';
+import { getCredentialsList, upsertCredential, deleteCredential, getAdapters, installAdapter, uninstallAdapter, getReputationConfig, updateReputationConfig } from '../lib/api';
 
 type CredentialEntry = { provider: string; keyName: string; createdAt: number; updatedAt: number };
 
@@ -382,19 +383,291 @@ function ProviderCard({ provider, credentials, onSave, onDelete }: {
   );
 }
 
+type SlashRule = {
+  id: string;
+  label: string;
+  description: string;
+  penalty: number;
+  enabled: boolean;
+};
+
+type ReputationConfigData = {
+  faucet: {
+    initialReputation: number;
+    minReputation: number;
+    maxReputation: number;
+    dripAmount: number;
+    dripTrigger: string;
+    decayRate: number;
+    decayInterval: string;
+  };
+  slashing: {
+    enabled: boolean;
+    rules: SlashRule[];
+  };
+  persona: {
+    archetypeBonus: number;
+    diversityWeight: number;
+    minPersonasForBonus: number;
+  };
+};
+
+const DRIP_TRIGGERS = [
+  { value: 'consensus_match', label: 'Consensus Match' },
+  { value: 'correct_vote', label: 'Correct Vote' },
+  { value: 'participation', label: 'Participation' },
+  { value: 'per_round', label: 'Per Round' },
+];
+
+const DECAY_INTERVALS = [
+  { value: 'per_round', label: 'Per Round' },
+  { value: 'per_day', label: 'Per Day' },
+  { value: 'per_workflow', label: 'Per Workflow Run' },
+  { value: 'none', label: 'No Decay' },
+];
+
+function ReputationSettingsSection({ config, onSave }: { config: ReputationConfigData; onSave: (config: ReputationConfigData) => Promise<void> }) {
+  const [draft, setDraft] = useState<ReputationConfigData>(config);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setDraft(config);
+    setDirty(false);
+  }, [config]);
+
+  function updateFaucet(key: string, value: any) {
+    setDraft(d => ({ ...d, faucet: { ...d.faucet, [key]: value } }));
+    setDirty(true);
+  }
+
+  function updateSlashing(key: string, value: any) {
+    setDraft(d => ({ ...d, slashing: { ...d.slashing, [key]: value } }));
+    setDirty(true);
+  }
+
+  function updateRule(ruleId: string, key: string, value: any) {
+    setDraft(d => ({
+      ...d,
+      slashing: {
+        ...d.slashing,
+        rules: d.slashing.rules.map(r => r.id === ruleId ? { ...r, [key]: value } : r),
+      },
+    }));
+    setDirty(true);
+  }
+
+  function updatePersona(key: string, value: any) {
+    setDraft(d => ({ ...d, persona: { ...d.persona, [key]: value } }));
+    setDirty(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setDirty(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="bg-card border-border/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <Shield className="h-5 w-5 text-amber-400" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Reputation & Slashing</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Configure reputation faucet, slash rules, and persona engine settings.
+              </p>
+            </div>
+          </div>
+          {dirty && (
+            <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+              <Save className="h-3.5 w-3.5" />
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <Separator />
+      <CardContent className="pt-4 space-y-6">
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Droplets className="h-4 w-4 text-blue-400" />
+            <h3 className="text-sm font-medium">Reputation Faucet</h3>
+            <Badge variant="outline" className="text-[10px]">consensus-tools</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Controls how reputation flows to agents. Agents earn reputation when they align with consensus outcomes.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Initial Rep</label>
+              <Input className="h-8 text-xs" type="number" min="0" max="1" step="0.05" value={draft.faucet.initialReputation} onChange={(e) => updateFaucet('initialReputation', parseFloat(e.target.value) || 0)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Min Rep</label>
+              <Input className="h-8 text-xs" type="number" min="0" max="1" step="0.05" value={draft.faucet.minReputation} onChange={(e) => updateFaucet('minReputation', parseFloat(e.target.value) || 0)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Max Rep</label>
+              <Input className="h-8 text-xs" type="number" min="0" max="1" step="0.05" value={draft.faucet.maxReputation} onChange={(e) => updateFaucet('maxReputation', parseFloat(e.target.value) || 0)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Drip Amount</label>
+              <Input className="h-8 text-xs" type="number" min="0" max="0.5" step="0.005" value={draft.faucet.dripAmount} onChange={(e) => updateFaucet('dripAmount', parseFloat(e.target.value) || 0)} />
+              <p className="text-[10px] text-muted-foreground">Rep gained per trigger event</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Drip Trigger</label>
+              <Select className="h-8 text-xs" value={draft.faucet.dripTrigger} onChange={(e) => updateFaucet('dripTrigger', e.target.value)}>
+                {DRIP_TRIGGERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </Select>
+              <p className="text-[10px] text-muted-foreground">When reputation is awarded</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Decay Rate</label>
+              <Input className="h-8 text-xs" type="number" min="0" max="0.5" step="0.005" value={draft.faucet.decayRate} onChange={(e) => updateFaucet('decayRate', parseFloat(e.target.value) || 0)} />
+              <p className="text-[10px] text-muted-foreground">Passive rep loss over time</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Decay Interval</label>
+              <Select className="h-8 text-xs" value={draft.faucet.decayInterval} onChange={(e) => updateFaucet('decayInterval', e.target.value)}>
+                {DECAY_INTERVALS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </Select>
+              <p className="text-[10px] text-muted-foreground">How often decay applies</p>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sword className="h-4 w-4 text-red-400" />
+              <h3 className="text-sm font-medium">Slash Rules</h3>
+              <Badge variant="outline" className="text-[10px]">consensus-tools</Badge>
+            </div>
+            <button
+              onClick={() => updateSlashing('enabled', !draft.slashing.enabled)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {draft.slashing.enabled ? (
+                <><ToggleRight className="h-4 w-4 text-emerald-400" /> Enabled</>
+              ) : (
+                <><ToggleLeft className="h-4 w-4 text-muted-foreground" /> Disabled</>
+              )}
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Penalties applied to agent reputation when they violate consensus expectations.
+          </p>
+          <div className="space-y-2">
+            {draft.slashing.rules.map((rule) => (
+              <div
+                key={rule.id}
+                className={`rounded-lg border p-3 transition-all ${
+                  rule.enabled && draft.slashing.enabled
+                    ? 'border-red-500/20 bg-red-500/5'
+                    : 'border-border/50 bg-muted/20 opacity-60'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => updateRule(rule.id, 'enabled', !rule.enabled)}
+                      disabled={!draft.slashing.enabled}
+                      className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      {rule.enabled ? (
+                        <ToggleRight className="h-4 w-4 text-red-400" />
+                      ) : (
+                        <ToggleLeft className="h-4 w-4" />
+                      )}
+                    </button>
+                    <span className="text-sm font-medium">{rule.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] text-muted-foreground">Penalty:</label>
+                    <Input
+                      className="h-6 w-16 text-xs text-center"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={rule.penalty}
+                      onChange={(e) => updateRule(rule.id, 'penalty', parseFloat(e.target.value) || 0)}
+                      disabled={!draft.slashing.enabled || !rule.enabled}
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground pl-6">{rule.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="h-4 w-4 text-purple-400" />
+            <h3 className="text-sm font-medium">Persona Engine</h3>
+            <Badge variant="outline" className="text-[10px]">consensus-persona-engine</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Bonuses for diverse persona usage and archetype specialization.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Archetype Bonus</label>
+              <Input className="h-8 text-xs" type="number" min="0" max="0.5" step="0.01" value={draft.persona.archetypeBonus} onChange={(e) => updatePersona('archetypeBonus', parseFloat(e.target.value) || 0)} />
+              <p className="text-[10px] text-muted-foreground">Extra rep for archetype agents</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Diversity Weight</label>
+              <Input className="h-8 text-xs" type="number" min="0" max="1" step="0.05" value={draft.persona.diversityWeight} onChange={(e) => updatePersona('diversityWeight', parseFloat(e.target.value) || 0)} />
+              <p className="text-[10px] text-muted-foreground">Bonus for varied persona mix</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Min Personas</label>
+              <Input className="h-8 text-xs" type="number" min="1" max="10" step="1" value={draft.persona.minPersonasForBonus} onChange={(e) => updatePersona('minPersonasForBonus', parseInt(e.target.value) || 1)} />
+              <p className="text-[10px] text-muted-foreground">Min agents for diversity bonus</p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const [credentials, setCredentials] = useState<CredentialEntry[]>([]);
   const [adapters, setAdapters] = useState<Record<string, boolean>>({});
+  const [reputationConfig, setReputationConfig] = useState<ReputationConfigData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async () => {
     try {
-      const [credData, adapterData] = await Promise.all([
+      const [credData, adapterData, repData] = await Promise.all([
         getCredentialsList(),
         getAdapters(),
+        getReputationConfig(),
       ]);
       setCredentials(credData.credentials || []);
       setAdapters(adapterData.adapters || {});
+      setReputationConfig(repData.config || null);
     } catch (e) {
       console.error('Failed to load settings:', e);
     } finally {
@@ -424,6 +697,11 @@ export default function SettingsPage() {
     await loadAll();
   };
 
+  const handleSaveReputation = async (config: ReputationConfigData) => {
+    const result = await updateReputationConfig(config);
+    setReputationConfig(result.config);
+  };
+
   const visibleProviders = PROVIDERS.filter(p =>
     !p.requiresAdapter || adapters[p.id]
   );
@@ -437,7 +715,7 @@ export default function SettingsPage() {
         </Link>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage chat adapters and credentials for external integrations. Values are encrypted and stored server-side.
+          Manage reputation rules, chat adapters, and credentials for external integrations.
         </p>
       </div>
 
@@ -445,6 +723,10 @@ export default function SettingsPage() {
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : (
         <div className="space-y-4">
+          {reputationConfig && (
+            <ReputationSettingsSection config={reputationConfig} onSave={handleSaveReputation} />
+          )}
+
           <ChatAdaptersSection
             adapters={adapters}
             onInstall={handleInstall}

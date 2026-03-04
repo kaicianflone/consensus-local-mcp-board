@@ -105,6 +105,33 @@ The system supports two distinct agent types, both managed via the Agents & Part
 - When an HITL node fires, it looks up chat-linked participants and includes their adapter/handle in the prompt delivery
 - Chat links appear as badges on participant cards in the panel
 
+## Reputation & Slashing Settings
+
+The Settings page (`/settings`) includes a "Reputation & Slashing" section with three configurable subsections:
+
+### Reputation Faucet (consensus-tools)
+- **Initial Reputation** — starting rep for new agents (default 0.5)
+- **Min/Max Reputation** — bounds (0.0–1.0)
+- **Drip Amount** — rep gained per trigger event (default 0.02)
+- **Drip Trigger** — when rep is awarded (consensus_match, correct_vote, participation, per_round)
+- **Decay Rate** — passive rep loss over time (default 0.01)
+- **Decay Interval** — how often decay applies (per_round, per_day, per_workflow, none)
+
+### Slash Rules (consensus-tools)
+- Globally toggleable slashing system
+- Five configurable rules with individual enable/disable and penalty amounts:
+  - Consensus Disagreement (0.05), Low Confidence + Wrong (0.08), High Risk Miss (0.10), Response Timeout (0.03), Repeated Rewrite (0.04)
+- Penalties are subtracted from agent reputation when violations occur
+
+### Persona Engine (consensus-persona-engine)
+- **Archetype Bonus** — extra rep for archetype-specialized agents
+- **Diversity Weight** — bonus for varied persona mix in a round
+- **Min Personas for Bonus** — minimum agent count to trigger diversity bonus
+
+Config stored in `_internal_config` table as JSON. API endpoints:
+- `GET /api/settings/reputation` — read current config
+- `PUT /api/settings/reputation` — merge-update config
+
 ## Adapter Credential Resolution
 
 - `ai-sdk.ts` uses Vercel AI SDK (`generateText` from `ai` package with `@ai-sdk/openai` provider), falls back to deterministic evaluation when no API key is available
