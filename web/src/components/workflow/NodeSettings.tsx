@@ -152,6 +152,31 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
                 <option value="full">Full</option>
               </Select>
             </FieldLabel>
+            
+            {node.type === 'agent' && (
+              <div className="mt-4 pt-4 border-t space-y-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Reputation & Voting</div>
+                <FieldLabel>
+                  Voting Weight
+                  <Input 
+                    type="number" 
+                    step="0.1" 
+                    min="0" 
+                    max="10" 
+                    value={draft.votingWeight ?? 1.0} 
+                    onChange={(e) => set('votingWeight', Number(e.target.value))} 
+                  />
+                </FieldLabel>
+                <FieldLabel>
+                  Reputation (View Only)
+                  <Input 
+                    value={draft.reputation ?? '0.95'} 
+                    disabled 
+                    className="bg-muted/50 cursor-not-allowed"
+                  />
+                </FieldLabel>
+              </div>
+            )}
           </>
         )}
 
