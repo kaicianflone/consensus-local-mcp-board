@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import { Clock, Shield, Users, Zap, Info, Copy, Check } from 'lucide-react';
+import { Clock, Shield, Users, Zap, Info, Copy, Check, ChevronUp, ChevronDown } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { getEvents } from '../../lib/api';
@@ -25,6 +25,7 @@ const EVENT_COLORS: Record<string, string> = {
 export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
   const [widths, setWidths] = useState({ time: 130, type: 110, duration: 70, status: 100 });
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [hoveredEvent, setHoveredEvent] = useState<{ id: string; x: number; y: number; position: 'top' | 'bottom' } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isMouseInTooltip, setIsMouseInTooltip] = useState(false);
@@ -92,14 +93,16 @@ export function EventTimeline() {
     async function load() {
       try {
         const d = await getEvents({ limit: 50 });
-        const sortedEvents = (d.events || []).sort((a: any, b: any) => a.ts - b.ts);
+        const sortedEvents = (d.events || []).sort((a: any, b: any) => {
+          return sortOrder === 'asc' ? a.ts - b.ts : b.ts - a.ts;
+        });
         setEvents(sortedEvents);
       } catch {}
     }
     load();
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
-  }, []);
+  }, [sortOrder]);
 
   return (
     <Card className="h-full flex flex-col">
@@ -111,12 +114,15 @@ export function EventTimeline() {
       <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
         <div className="flex-1 overflow-y-auto scrollbar-custom">
           <table className="w-full text-left border-collapse table-fixed">
-            <thead className="sticky top-0 bg-muted/50 backdrop-blur-sm z-10 border-b border-border/50">
-              <tr>
-                <th style={{ width: widths.time }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header">
-                  Time
+            <thead>
+              <tr className="bg-muted/50 backdrop-blur-sm sticky top-0 z-10 border-b border-border/50">
+                <th style={{ width: widths.time }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header select-none cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}>
+                  <div className="flex items-center gap-1">
+                    Time
+                    {sortOrder === 'asc' ? <ChevronUp className="h-3 w-3 text-emerald-500" /> : <ChevronDown className="h-3 w-3 text-emerald-500" />}
+                  </div>
                   <div 
-                    onMouseDown={(e) => handleMouseDown(e, 'time')}
+                    onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'time'); }}
                     className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
                   />
                 </th>
