@@ -91,7 +91,8 @@ export function EventTimeline() {
     async function load() {
       try {
         const d = await getEvents({ limit: 50 });
-        setEvents(d.events || []);
+        const sortedEvents = (d.events || []).sort((a: any, b: any) => a.ts - b.ts);
+        setEvents(sortedEvents);
       } catch {}
     }
     load();
