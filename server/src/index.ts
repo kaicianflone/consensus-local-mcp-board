@@ -75,11 +75,7 @@ function validateWorkflowDefinition(definition: any) {
     }
 
     if (t === 'hitl') {
-      const channel = String(c.channel || '');
-      const validChannels = ['slack', 'discord', 'telegram', 'whatsapp', 'signal', 'googlechat', 'irc', 'imessage'];
-      if (!validChannels.includes(channel)) return `HITL index ${i}: invalid channel '${channel}'`;
-      const requiredVotes = Number(c.requiredVotes ?? 1);
-      if (requiredVotes < 1 || requiredVotes > 50) return `HITL index ${i}: requiredVotes must be between 1 and 50`;
+      // HITL channel and requiredVotes are now managed via participants or not needed
     }
 
     if (t === 'action') {
