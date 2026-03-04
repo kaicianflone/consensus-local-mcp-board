@@ -9,6 +9,8 @@ import { humanApprovePost } from './api/human.approve.post.js';
 import { resumeWorkflow, runWorkflow } from './workflows/runner.js';
 import { upsertCredential, listCredentials, deleteCredential, getProviderStatus, getCredential } from './db/credentials.js';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
+import path from 'node:path';
 
 const app = express();
 const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
@@ -452,6 +454,94 @@ app.get('/api/settings/credentials/:provider/status', (req, res) => {
     res.json({ provider: req.params.provider, configured: getProviderStatus(db, req.params.provider) });
   } catch (e: any) {
     res.status(500).json(err('CREDENTIALS_STATUS_FAILED', 'Failed to get provider status', e?.message));
+  }
+});
+
+// ── Chat Adapter Management ──
+
+const VALID_ADAPTERS: Record<string, string> = {
+  slack: '@chat-adapter/slack',
+  teams: '@chat-adapter/teams',
+  gchat: '@chat-adapter/gchat',
+  discord: '@chat-adapter/discord',
+  telegram: '@chat-adapter/telegram',
+};
+
+function getInstalledAdapters(): Record<string, boolean> {
+  const status: Record<string, boolean> = {};
+  for (const [id, pkg] of Object.entries(VALID_ADAPTERS)) {
+    try {
+      require.resolve(pkg);
+      status[id] = true;
+    } catch {
+      const cred = getCredential(db, 'adapter', id);
+      status[id] = cred === 'installed';
+    }
+  }
+  return status;
+}
+
+app.get('/api/settings/adapters', (_req, res) => {
+  try {
+    res.json({ adapters: getInstalledAdapters() });
+  } catch (e: any) {
+    res.status(500).json(err('ADAPTERS_LIST_FAILED', 'Failed to list adapters', e?.message));
+  }
+});
+
+app.post('/api/settings/adapters/install', async (req, res) => {
+  try {
+    const body = z.object({ adapter: z.string().min(1) }).parse(req.body || {});
+    const pkg = VALID_ADAPTERS[body.adapter];
+    if (!pkg) return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}. Valid: ${Object.keys(VALID_ADAPTERS).join(', ')}`));
+
+    const rootDir = path.resolve(process.cwd(), '..');
+    let installOutput = '';
+    let installed = false;
+    try {
+      installOutput = execSync(`npm install ${pkg} 2>&1`, { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
+      installed = true;
+    } catch (e: any) {
+      installOutput = e?.stdout || e?.stderr || e?.message || 'Install failed';
+      installed = false;
+    }
+
+    upsertCredential(db, 'adapter', body.adapter, installed ? 'installed' : 'failed');
+
+    res.json({
+      ok: true,
+      adapter: body.adapter,
+      package: pkg,
+      installed,
+      output: installOutput.slice(0, 2000),
+    });
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'ADAPTER_INSTALL_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to install adapter', e?.message));
+  }
+});
+
+app.post('/api/settings/adapters/uninstall', async (req, res) => {
+  try {
+    const body = z.object({ adapter: z.string().min(1) }).parse(req.body || {});
+    const pkg = VALID_ADAPTERS[body.adapter];
+    if (!pkg) return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}`));
+
+    const rootDir = path.resolve(process.cwd(), '..');
+    try {
+      execSync(`npm uninstall ${pkg} 2>&1`, { cwd: rootDir, timeout: 30000, encoding: 'utf8' });
+    } catch {
+    }
+
+    deleteCredential(db, 'adapter', body.adapter);
+    deleteCredential(db, body.adapter, 'bot_token');
+    deleteCredential(db, body.adapter, 'webhook_url');
+    deleteCredential(db, body.adapter, 'api_key');
+
+    res.json({ ok: true, adapter: body.adapter, uninstalled: true });
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'ADAPTER_UNINSTALL_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to uninstall adapter', e?.message));
   }
 });
 

@@ -46,3 +46,11 @@ export async function deleteCredential(provider: string, keyName: string) {
 export async function getProviderStatus(provider: string) {
   return fetch(`${API}/settings/credentials/${encodeURIComponent(provider)}/status`).then(j);
 }
+
+export async function getAdapters() { return fetch(`${API}/settings/adapters`).then(j); }
+export async function installAdapter(adapter: string) {
+  return fetch(`${API}/settings/adapters/install`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ adapter }) }).then(j);
+}
+export async function uninstallAdapter(adapter: string) {
+  return fetch(`${API}/settings/adapters/uninstall`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ adapter }) }).then(j);
+}

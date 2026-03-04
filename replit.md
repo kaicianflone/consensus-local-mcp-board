@@ -32,12 +32,26 @@ This is a monorepo with three workspaces:
 - Credentials stored encrypted server-side in SQLite (`credentials` table)
 - Encryption: AES-256-GCM with secret from `CREDENTIALS_SECRET` env var (or auto-generated for dev)
 - Credential store: `server/src/db/credentials.ts` (encrypt/decrypt/CRUD)
-- Supported providers: GitHub, Slack, OpenAI, Anthropic
+- Supported providers: GitHub, Slack, Teams, Google Chat, Discord, Telegram, OpenAI, Anthropic
+- Chat adapter credential cards only appear after the adapter is installed
 - API endpoints:
   - `GET /api/settings/credentials` — list (provider + keyName only, never values)
   - `POST /api/settings/credentials` — upsert `{provider, keyName, value}`
   - `DELETE /api/settings/credentials/:provider/:keyName` — delete
   - `GET /api/settings/credentials/:provider/status` — boolean flags per key
+
+## Chat Adapters
+
+- Settings page shows a "Chat Adapters" section at the top for installing platform adapters
+- Supported: Slack, Microsoft Teams, Google Chat, Discord, Telegram
+- Install/uninstall triggers `npm install/uninstall @chat-adapter/<name>` server-side
+- Adapter state tracked in credentials table (provider: 'adapter', keyName: adapter id)
+- When an adapter is installed, its credential card (tokens, webhooks) appears below
+- When uninstalled, credentials for that adapter are also removed
+- API endpoints:
+  - `GET /api/settings/adapters` — returns install status for each adapter
+  - `POST /api/settings/adapters/install` — installs adapter package `{adapter: "slack"}`
+  - `POST /api/settings/adapters/uninstall` — uninstalls adapter and cleans up credentials
 
 ## GitHub Webhook Integration
 

@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, Github, MessageSquare, Brain, Sparkles, Eye, EyeOff, Save, Trash2, CheckCircle2, XCircle, Copy, Check, Webhook } from 'lucide-react';
+import { ArrowLeft, Github, MessageSquare, Brain, Sparkles, Eye, EyeOff, Save, Trash2, CheckCircle2, XCircle, Copy, Check, Webhook, Download, Package, Loader2, Hash, Radio, Send, AtSign } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Separator } from '../components/ui/separator';
-import { getCredentialsList, upsertCredential, deleteCredential } from '../lib/api';
+import { getCredentialsList, upsertCredential, deleteCredential, getAdapters, installAdapter, uninstallAdapter } from '../lib/api';
 
 type CredentialEntry = { provider: string; keyName: string; createdAt: number; updatedAt: number };
 
@@ -17,7 +17,25 @@ type ProviderConfig = {
   iconColor: string;
   description: string;
   fields: Array<{ key: string; label: string; placeholder: string; helpText?: string }>;
+  requiresAdapter?: boolean;
 };
+
+type AdapterConfig = {
+  id: string;
+  name: string;
+  icon: React.ElementType;
+  iconColor: string;
+  description: string;
+  packageName: string;
+};
+
+const CHAT_ADAPTERS: AdapterConfig[] = [
+  { id: 'slack', name: 'Slack', icon: Hash, iconColor: 'text-purple-400', description: 'Slack workspace integration', packageName: '@chat-adapter/slack' },
+  { id: 'teams', name: 'Microsoft Teams', icon: AtSign, iconColor: 'text-blue-400', description: 'Teams channels and chats', packageName: '@chat-adapter/teams' },
+  { id: 'gchat', name: 'Google Chat', icon: MessageSquare, iconColor: 'text-green-400', description: 'Google Workspace chat', packageName: '@chat-adapter/gchat' },
+  { id: 'discord', name: 'Discord', icon: Radio, iconColor: 'text-indigo-400', description: 'Discord server bots', packageName: '@chat-adapter/discord' },
+  { id: 'telegram', name: 'Telegram', icon: Send, iconColor: 'text-sky-400', description: 'Telegram bot API', packageName: '@chat-adapter/telegram' },
+];
 
 const PROVIDERS: ProviderConfig[] = [
   {
@@ -34,12 +52,59 @@ const PROVIDERS: ProviderConfig[] = [
   {
     id: 'slack',
     name: 'Slack',
-    icon: MessageSquare,
+    icon: Hash,
     iconColor: 'text-purple-400',
     description: 'Send HITL prompts and notifications to Slack channels.',
+    requiresAdapter: true,
     fields: [
       { key: 'bot_token', label: 'Bot Token', placeholder: 'xoxb-xxxxxxxxxxxx' },
       { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://hooks.slack.com/services/...' },
+    ],
+  },
+  {
+    id: 'teams',
+    name: 'Microsoft Teams',
+    icon: AtSign,
+    iconColor: 'text-blue-400',
+    description: 'Send notifications and HITL prompts to Teams channels.',
+    requiresAdapter: true,
+    fields: [
+      { key: 'webhook_url', label: 'Incoming Webhook URL', placeholder: 'https://outlook.office.com/webhook/...' },
+    ],
+  },
+  {
+    id: 'gchat',
+    name: 'Google Chat',
+    icon: MessageSquare,
+    iconColor: 'text-green-400',
+    description: 'Send notifications to Google Chat spaces.',
+    requiresAdapter: true,
+    fields: [
+      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://chat.googleapis.com/v1/spaces/...' },
+    ],
+  },
+  {
+    id: 'discord',
+    name: 'Discord',
+    icon: Radio,
+    iconColor: 'text-indigo-400',
+    description: 'Send notifications to Discord channels via bot.',
+    requiresAdapter: true,
+    fields: [
+      { key: 'bot_token', label: 'Bot Token', placeholder: 'MTxxxxxxxx...' },
+      { key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://discord.com/api/webhooks/...' },
+    ],
+  },
+  {
+    id: 'telegram',
+    name: 'Telegram',
+    icon: Send,
+    iconColor: 'text-sky-400',
+    description: 'Send notifications via Telegram bot.',
+    requiresAdapter: true,
+    fields: [
+      { key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC-DEF...' },
+      { key: 'api_key', label: 'Chat ID', placeholder: '-1001234567890' },
     ],
   },
   {
@@ -63,6 +128,103 @@ const PROVIDERS: ProviderConfig[] = [
     ],
   },
 ];
+
+function ChatAdaptersSection({ adapters, onInstall, onUninstall }: {
+  adapters: Record<string, boolean>;
+  onInstall: (id: string) => Promise<void>;
+  onUninstall: (id: string) => Promise<void>;
+}) {
+  const [installing, setInstalling] = useState<Record<string, boolean>>({});
+  const [uninstalling, setUninstalling] = useState<Record<string, boolean>>({});
+
+  const handleInstall = async (id: string) => {
+    setInstalling(s => ({ ...s, [id]: true }));
+    try { await onInstall(id); } finally { setInstalling(s => ({ ...s, [id]: false })); }
+  };
+
+  const handleUninstall = async (id: string) => {
+    setUninstalling(s => ({ ...s, [id]: true }));
+    try { await onUninstall(id); } finally { setUninstalling(s => ({ ...s, [id]: false })); }
+  };
+
+  const installedCount = Object.values(adapters).filter(Boolean).length;
+
+  return (
+    <Card className="bg-card border-border/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <Package className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Chat Adapters</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Install chat platform adapters to enable HITL notifications and webhook integrations.
+              </p>
+            </div>
+          </div>
+          <Badge variant={installedCount > 0 ? 'default' : 'outline'}>
+            {installedCount} installed
+          </Badge>
+        </div>
+      </CardHeader>
+      <Separator />
+      <CardContent className="pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {CHAT_ADAPTERS.map((adapter) => {
+            const isInstalled = adapters[adapter.id] || false;
+            const isInstalling = installing[adapter.id] || false;
+            const isUninstalling = uninstalling[adapter.id] || false;
+            const busy = isInstalling || isUninstalling;
+
+            return (
+              <div
+                key={adapter.id}
+                className={`flex items-center justify-between rounded-lg border p-3 transition-all ${
+                  isInstalled ? 'border-primary/30 bg-primary/5' : 'border-border/50 bg-muted/20'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <adapter.icon className={`h-5 w-5 shrink-0 ${adapter.iconColor}`} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{adapter.name}</div>
+                    <div className="text-xs text-muted-foreground truncate">{adapter.packageName}</div>
+                  </div>
+                </div>
+                {isInstalled ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleUninstall(adapter.id)}
+                    disabled={busy}
+                    className="shrink-0 h-8 px-2.5 text-xs text-destructive hover:text-destructive"
+                  >
+                    {isUninstalling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleInstall(adapter.id)}
+                    disabled={busy}
+                    className="shrink-0 h-8 gap-1.5 text-xs"
+                  >
+                    {isInstalling ? (
+                      <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Installing...</>
+                    ) : (
+                      <><Download className="h-3.5 w-3.5" /> Install</>
+                    )}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function ProviderCard({ provider, credentials, onSave, onDelete }: {
   provider: ProviderConfig;
@@ -222,30 +384,49 @@ function ProviderCard({ provider, credentials, onSave, onDelete }: {
 
 export default function SettingsPage() {
   const [credentials, setCredentials] = useState<CredentialEntry[]>([]);
+  const [adapters, setAdapters] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
-  const loadCredentials = useCallback(async () => {
+  const loadAll = useCallback(async () => {
     try {
-      const data = await getCredentialsList();
-      setCredentials(data.credentials || []);
+      const [credData, adapterData] = await Promise.all([
+        getCredentialsList(),
+        getAdapters(),
+      ]);
+      setCredentials(credData.credentials || []);
+      setAdapters(adapterData.adapters || {});
     } catch (e) {
-      console.error('Failed to load credentials:', e);
+      console.error('Failed to load settings:', e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadCredentials(); }, [loadCredentials]);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   const handleSave = async (provider: string, keyName: string, value: string) => {
     await upsertCredential(provider, keyName, value);
-    await loadCredentials();
+    await loadAll();
   };
 
   const handleDelete = async (provider: string, keyName: string) => {
     await deleteCredential(provider, keyName);
-    await loadCredentials();
+    await loadAll();
   };
+
+  const handleInstall = async (id: string) => {
+    await installAdapter(id);
+    await loadAll();
+  };
+
+  const handleUninstall = async (id: string) => {
+    await uninstallAdapter(id);
+    await loadAll();
+  };
+
+  const visibleProviders = PROVIDERS.filter(p =>
+    !p.requiresAdapter || adapters[p.id]
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
@@ -256,7 +437,7 @@ export default function SettingsPage() {
         </Link>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage credentials for external integrations. Values are encrypted and stored server-side.
+          Manage chat adapters and credentials for external integrations. Values are encrypted and stored server-side.
         </p>
       </div>
 
@@ -264,7 +445,13 @@ export default function SettingsPage() {
         <div className="text-center py-12 text-muted-foreground">Loading...</div>
       ) : (
         <div className="space-y-4">
-          {PROVIDERS.map((provider) => (
+          <ChatAdaptersSection
+            adapters={adapters}
+            onInstall={handleInstall}
+            onUninstall={handleUninstall}
+          />
+
+          {visibleProviders.map((provider) => (
             <ProviderCard
               key={provider.id}
               provider={provider}
