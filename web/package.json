@@ -22,6 +22,7 @@
     "autoprefixer": "^10.4.27",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "geist": "^1.7.0",
     "lucide-react": "^0.576.0",
     "postcss": "^8.5.8",
     "react": "^18.3.1",

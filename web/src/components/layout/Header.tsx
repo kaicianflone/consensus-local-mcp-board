@@ -13,14 +13,14 @@ export function Header() {
   const location = useLocation();
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-sm" style={{ fontFamily: "'Geist Pixel', monospace" }}>
+    <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-sm">
       <div className="mx-auto flex h-14 max-w-screen-2xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link to="/" className="flex items-center gap-2 font-semibold text-foreground hover:text-primary transition-colors">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20">
               <Workflow className="h-4 w-4 text-primary" />
             </div>
-            <span className="hidden sm:inline">consensus board</span>
+            <span className="hidden sm:inline lowercase font-mono tracking-tighter text-lg">consensus board</span>
           </Link>
 
           <nav className="flex items-center gap-1">

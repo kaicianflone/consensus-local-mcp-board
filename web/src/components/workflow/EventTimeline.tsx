@@ -23,6 +23,7 @@ const EVENT_COLORS: Record<string, string> = {
 export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
   const [widths, setWidths] = useState({ time: 130, type: 110, duration: 70, status: 100 });
+  const [hoveredEvent, setHoveredEvent] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const handleMouseDown = (e: React.MouseEvent, column: keyof typeof widths) => {
     e.preventDefault();
@@ -163,17 +164,36 @@ export function EventTimeline() {
                     <td className="py-1.5 px-2 align-top border-r border-border/5">
                       <span className="text-[10px] text-foreground/90 truncate font-medium">{summary}</span>
                     </td>
-                    <td className="py-1.5 px-2 align-top relative group/cell text-center">
+                    <td 
+                      className="py-1.5 px-2 align-top relative group/cell text-center"
+                      onMouseMove={(e) => {
+                        setHoveredEvent({ id: event.id, x: e.clientX, y: e.pageY });
+                      }}
+                      onMouseLeave={() => setHoveredEvent(null)}
+                    >
                       <div className="inline-flex items-center justify-center">
                          <Info className="h-3.5 w-3.5 text-emerald-500/80 cursor-help hover:text-emerald-400 transition-colors" />
                       </div>
-                      {/* Detailed info on hover - fixed positioning and styling */}
-                      <div className="fixed hidden group-hover/cell:block z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-none text-[10px] font-mono whitespace-pre-wrap right-6 top-1/4 max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left">
-                        <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center gap-2">
-                          <Info className="h-3 w-3" /> Raw Event Data
+                      
+                      {hoveredEvent?.id === event.id && (
+                        <div 
+                          className="fixed z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left"
+                          style={{ 
+                            left: hoveredEvent.x + 15, 
+                            top: Math.min(hoveredEvent.y - 50, window.innerHeight - 300) 
+                          }}
+                          onMouseEnter={() => setHoveredEvent({ ...hoveredEvent })}
+                          onMouseLeave={() => setHoveredEvent(null)}
+                        >
+                          <div className="absolute -left-2 top-12 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] border-r-border/50" />
+                          <div className="absolute -left-[7px] top-12 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] border-r-[#030712]" />
+                          
+                          <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center gap-2 sticky top-0 bg-[#030712] z-10">
+                            <Info className="h-3 w-3" /> Raw Event Data
+                          </div>
+                          {fullInfo}
                         </div>
-                        {fullInfo}
-                      </div>
+                      )}
                     </td>
                   </tr>
                 );
