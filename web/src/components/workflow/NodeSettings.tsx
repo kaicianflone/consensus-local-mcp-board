@@ -297,7 +297,7 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
 const GROUP_CHILD_TYPES: { type: NodeType; label: string }[] = [
   { type: 'agent', label: 'Agent' },
   { type: 'guard', label: 'Guard' },
-  { type: 'hitl', label: 'HITL' },
+  { type: 'hitl', label: 'Human Approval' },
   { type: 'action', label: 'Action' },
 ];
 
@@ -313,7 +313,7 @@ function GroupChildrenEditor({ groupChildren, onChange }: { groupChildren: any[]
 
   function addChild() {
     const id = `${addType}-${Date.now().toString(36)}`;
-    const labels: Record<string, string> = { agent: 'Agent', guard: 'Guard', hitl: 'HITL', action: 'Action' };
+    const labels: Record<string, string> = { agent: 'Agent', guard: 'Guard', hitl: 'Human Approval', action: 'Action' };
     onChange([...groupChildren, { id, type: addType, label: labels[addType] || addType, config: childDefaults(addType) }]);
   }
 

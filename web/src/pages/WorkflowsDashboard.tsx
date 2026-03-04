@@ -47,6 +47,12 @@ const STATUS_COLOR: Record<string, string> = {
   FAILED: 'text-destructive',
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  COMPLETED: 'COMPLETED',
+  WAITING_HUMAN: 'WAITING APPROVAL',
+  FAILED: 'FAILED',
+};
+
 export default function WorkflowsDashboard() {
   const [name, setName] = useState('workflow-1');
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
@@ -349,11 +355,12 @@ export default function WorkflowsDashboard() {
                 {runs.map((r: any) => {
                   const StatusIcon = STATUS_ICON[r.status] || Clock;
                   const statusColor = STATUS_COLOR[r.status] || 'text-muted-foreground';
+                  const statusLabel = STATUS_LABEL[r.status] || r.status;
                   return (
                     <div key={r.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-md border border-border/50 hover:bg-accent/30 transition-colors">
                       <div className="flex items-center gap-2 min-w-0">
                         <StatusIcon className={`h-4 w-4 shrink-0 ${statusColor}`} />
-                        <Badge variant="outline" className="text-[10px] shrink-0">{r.status}</Badge>
+                        <Badge variant="outline" className="text-[10px] shrink-0">{statusLabel}</Badge>
                         <Badge variant="secondary" className="text-[10px] shrink-0">{r.engine || 'local'}</Badge>
                         <Link to={`/boards/run/${r.run_id}`} className="text-sm text-primary hover:underline truncate">
                           {r.run_id}
