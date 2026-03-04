@@ -64,6 +64,23 @@ export default function BoardDetailPage() {
     return map;
   }, [events]);
 
+  const runConsensusMeta = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const e of events) {
+      if (e.type === 'FINAL_DECISION' && e.run_id) {
+        try {
+          const payload = JSON.parse(e.payload_json || '{}');
+          map[e.run_id] = {
+            jobId: payload?.audit_id || payload?.consensus_meta?.jobId || null,
+            submissionId: payload?.consensus_meta?.submissionId || null,
+            guardType: payload?.guard_type || null,
+          };
+        } catch {}
+      }
+    }
+    return map;
+  }, [events]);
+
   return (
     <div className="mx-auto max-w-screen-xl p-4 space-y-4">
       <div className="flex items-center gap-3">
@@ -90,6 +107,7 @@ export default function BoardDetailPage() {
                 {runs.map((r: any) => {
                   const decision = runDecisions[r.id];
                   const voteCount = voteCountsByRun[r.id] || 0;
+                  const meta = runConsensusMeta[r.id] || null;
                   return (
                     <Link key={r.id} to={`/boards/run/${r.id}`} className="block">
                       <div className="flex items-center gap-2 py-2.5 px-3 rounded-md border border-border/50 hover:bg-accent/30 hover:border-primary/30 transition-colors">
@@ -101,6 +119,14 @@ export default function BoardDetailPage() {
                         )}
                         <span className="text-sm truncate flex-1">{r.id}</span>
                         <div className="flex items-center gap-2 shrink-0">
+                          {meta?.jobId && (
+                            <Badge variant="secondary" className="text-[10px] max-w-[160px] truncate" title={meta.jobId}>
+                              job: {meta.jobId}
+                            </Badge>
+                          )}
+                          {meta?.guardType && (
+                            <Badge variant="outline" className="text-[10px]">{meta.guardType}</Badge>
+                          )}
                           {decision?.risk_score != null && (
                             <span className="text-[10px] text-muted-foreground">
                               risk: {Number(decision.risk_score).toFixed(2)}

@@ -13,6 +13,7 @@ import {
 } from '../db/store.js';
 import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
 import { sendHumanApprovalPrompt } from '../adapters/chat-sdk.js';
+import { evaluateViaConsensusTools } from '../adapters/consensus-tools.js';
 
 const REVIEWER_ARCHETYPES = [
   'security-reviewer',
@@ -307,55 +308,19 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   }
 
   if (node.type === 'guard') {
-    const agentOutputs = Object.values(context).filter((v: any) => Array.isArray(v?.votes) && typeof v?.aggregatedRisk === 'number');
-    if (agentOutputs.length > 0) {
-      const allVotes = agentOutputs.flatMap((o: any) => o.votes);
-      const aggregatedRisk = agentOutputs.reduce((sum: number, o: any) => sum + (o.aggregatedRisk || 0), 0) / agentOutputs.length;
-      const yesCount = allVotes.filter((v: any) => v.vote === 'YES').length;
-      const noCount = allVotes.filter((v: any) => v.vote === 'NO').length;
-      const rewriteCount = allVotes.filter((v: any) => v.vote === 'REWRITE').length;
-      const quorum = Number(node.config?.quorum ?? 0.7);
-      const riskThreshold = Number(node.config?.riskThreshold ?? 0.7);
-
-      let decision: 'ALLOW' | 'BLOCK' | 'REWRITE';
-      if (noCount > allVotes.length * (1 - quorum)) {
-        decision = 'BLOCK';
-      } else if (aggregatedRisk > riskThreshold) {
-        decision = 'REWRITE';
-      } else if (rewriteCount > yesCount) {
-        decision = 'REWRITE';
-      } else {
-        decision = 'ALLOW';
-      }
-
-      return {
-        decision,
-        risk: aggregatedRisk,
-        reasons: allVotes.map((v: any) => `[${v.evaluator}] ${v.reason}`),
-        voteSummary: { yes: yesCount, no: noCount, rewrite: rewriteCount, total: allVotes.length }
-      };
-    }
-
-    const votes = await evaluateWithAiSdk({
+    const consensus = evaluateViaConsensusTools({
       runId: ids.runId,
       boardId: ids.boardId,
-      guardType: node.config?.guardType || 'agent_action',
+      guardType: String(node.config?.guardType || 'agent_action'),
       payload: { input: context, guardConfig: node.config || {} },
-      policy: {
-        policyId: 'guard-node',
-        version: 'v1',
-        quorum: Number(node.config?.quorum ?? 0.7),
-        riskThreshold: Number(node.config?.riskThreshold ?? 0.7),
-        hitlRequiredAboveRisk: Number(node.config?.hitlThreshold ?? 0.7),
-        options: { assignedAgents: node.config?.assignedAgents || [], weights: node.config?.weights || {} }
-      },
-      idempotencyKey: `${ids.runId}:${node.id}`
+      policyPack: String(node.config?.policyPack || '')
     });
-    const top = votes[0] || { vote: 'YES', risk: 0 };
+
     return {
-      decision: top.vote === 'NO' ? 'BLOCK' : top.vote === 'REWRITE' ? 'REWRITE' : 'ALLOW',
-      risk: top.risk,
-      reasons: votes.map((v) => v.reason)
+      decision: consensus.decision === 'ALLOW' ? 'ALLOW' : consensus.decision === 'BLOCK' ? 'BLOCK' : 'REWRITE',
+      risk: Number(consensus.risk_score ?? 0.6),
+      reasons: [consensus.reason],
+      consensus: consensus.meta || null
     };
   }
 
