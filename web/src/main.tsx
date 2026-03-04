@@ -1,8 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import 'geist/dist/fonts/geist-sans/style.css';
-import 'geist/dist/fonts/geist-mono/style.css';
 import './styles.css';
 import { Header } from './components/layout/Header';
 import WorkflowsDashboard from './pages/WorkflowsDashboard';
