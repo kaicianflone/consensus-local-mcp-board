@@ -36,6 +36,7 @@ export async function updateParticipant(id: string, patch: any) { return fetch(`
 export async function deleteParticipant(id: string) { return fetch(`${API}/participants/${id}`, { method: 'DELETE' }).then(j); }
 export async function assignPolicy(input: any) { return fetch(`${API}/policies/assign`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }).then(j); }
 export async function submitConsensusVote(input: any) { return fetch(`${API}/votes`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }).then(j); }
+export async function getVotes(runId: string) { return fetch(`${API}/votes/${encodeURIComponent(runId)}`).then(j); }
 
 export async function getCredentialsList() { return fetch(`${API}/settings/credentials`).then(j); }
 export async function upsertCredential(provider: string, keyName: string, value: string) {

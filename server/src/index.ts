@@ -176,6 +176,27 @@ app.post('/api/votes', (req, res) => {
   }
 });
 
+app.get('/api/votes/:runId', (req, res) => {
+  try {
+    const run = getRun(req.params.runId) as any;
+    if (!run) return res.status(404).json(err('RUN_NOT_FOUND', 'Run not found'));
+    const policyId = (run?.meta_json ? JSON.parse(String(run.meta_json)).policy_id : null) || 'default';
+    const policy = getPolicyAssignment(run.board_id, policyId);
+    const quorum = Number(policy?.quorum ?? 0.6);
+    const agg = aggregateVotes(req.params.runId, quorum);
+    const participants = listParticipants(run.board_id);
+    const participantMap: Record<string, any> = {};
+    for (const p of participants) participantMap[(p as any).id] = p;
+    const enrichedVotes = (agg.votes || []).map((v: any) => ({
+      ...v,
+      participant: participantMap[v.participant_id] || null
+    }));
+    res.json({ votes: enrichedVotes, aggregate: { totalWeight: agg.totalWeight, yesWeight: agg.yesWeight, ratio: agg.ratio, passed: agg.passed, quorum }, participants });
+  } catch (e: any) {
+    res.status(500).json(err('VOTES_FETCH_FAILED', 'Failed to fetch votes', e?.message));
+  }
+});
+
 app.post('/api/agent/trigger', async (req, res) => {
   try {
     const key = String(req.headers['x-agent-key'] || '');
