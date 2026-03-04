@@ -29,9 +29,11 @@ export type WorkflowNode = {
   config: Record<string, any>;
 };
 
-function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: WorkflowNode; isSelected: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void; compact?: boolean }) {
+function NodeContent({ node, isSelected, onSelect, onDelete, compact, width }: { node: WorkflowNode; isSelected: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void; compact?: boolean; width?: number }) {
   const paletteItem = PALETTE.find((p) => p.type === node.type);
   const Icon = paletteItem?.icon;
+
+  const showLabel = !compact || (node.type === 'agent' && width && width > 80);
 
   return (
     <div
@@ -45,12 +47,14 @@ function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: 
     >
       {Icon && <Icon className={cn('h-4 w-4 shrink-0', NODE_ICON_COLORS[node.type] || 'text-muted-foreground')} />}
 
-      {!compact && (
+      {showLabel && (
         <div className="flex-1 min-w-0">
           <div className="font-medium truncate text-sm">{node.label}</div>
-          <div className="text-xs text-muted-foreground truncate uppercase">
-            <span>{node.type === 'hitl' ? 'human approval' : node.type}</span>
-          </div>
+          {!compact && (
+            <div className="text-xs text-muted-foreground truncate uppercase">
+              <span>{node.type === 'hitl' ? 'human approval' : node.type}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -82,6 +86,19 @@ interface SortableNodeProps {
 
 function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete, hideDelete }: SortableNodeProps & { hideDelete?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
+  const [containerWidth, setContainerWidth] = React.useState(0);
+  const resizeRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!resizeRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(resizeRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -90,11 +107,15 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
 
   if (node.type === 'group') {
     const children: WorkflowNode[] = Array.isArray(node.config?.children) ? node.config.children : [];
+    const childWidth = children.length > 0 ? (containerWidth - 16 - (children.length - 1) * 8) / children.length : 0;
 
     return (
       <>
         <div
-          ref={setNodeRef}
+          ref={(node) => {
+            setNodeRef(node);
+            (resizeRef as any).current = node;
+          }}
           style={style}
           className={cn(
             'rounded-lg border-2 border-dashed transition-all',
@@ -137,6 +158,7 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
                 onSelect={onSelect}
                 onDelete={onDelete}
                 compact
+                width={childWidth}
               />
             ))}
             {children.length === 0 && (
