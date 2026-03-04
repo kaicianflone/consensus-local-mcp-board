@@ -24,10 +24,19 @@ const EVENT_COLORS: Record<string, string> = {
 export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
   const [widths, setWidths] = useState({ time: 130, type: 110, duration: 70, status: 100 });
-  const [hoveredEvent, setHoveredEvent] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [hoveredEvent, setHoveredEvent] = useState<{ id: string; x: number; y: number; position: 'top' | 'bottom' } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isMouseInTooltip, setIsMouseInTooltip] = useState(false);
   const hideTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const handleInfoMouseEnter = (e: React.MouseEvent, eventId: string) => {
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceAbove = rect.top;
+    const tooltipHeight = 400; // Estimated max height
+    const position = spaceAbove > tooltipHeight ? 'top' : 'bottom';
+    setHoveredEvent({ id: eventId, x: 0, y: 0, position });
+  };
 
   const handleMouseDown = (e: React.MouseEvent, column: keyof typeof widths) => {
     e.preventDefault();
@@ -175,10 +184,7 @@ export function EventTimeline() {
                          <div className="relative">
                            <Info 
                              className="h-3.5 w-3.5 text-emerald-500/80 cursor-help hover:text-emerald-400 transition-colors" 
-                             onMouseEnter={() => {
-                               if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
-                               setHoveredEvent({ id: event.id, x: 0, y: 0 });
-                             }}
+                             onMouseEnter={(e) => handleInfoMouseEnter(e, event.id)}
                              onMouseLeave={() => {
                                hideTimeoutRef.current = setTimeout(() => {
                                  if (!isMouseInTooltip) {
@@ -190,7 +196,10 @@ export function EventTimeline() {
                            
                            {hoveredEvent?.id === event.id && (
                              <div 
-                               className="absolute bottom-full right-full mb-2 z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 w-80 break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left"
+                               className={cn(
+                                 "absolute right-full z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 w-80 break-words pointer-events-auto text-[10px] font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left",
+                                 hoveredEvent.position === 'top' ? "bottom-full mb-2" : "top-full mt-2"
+                               )}
                                onMouseEnter={() => {
                                  if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
                                  setIsMouseInTooltip(true);
@@ -202,8 +211,17 @@ export function EventTimeline() {
                                  }, 500);
                                }}
                              >
-                               <div className="absolute -right-2 bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
-                               <div className="absolute -right-[7px] bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
+                               {hoveredEvent.position === 'top' ? (
+                                 <>
+                                   <div className="absolute -right-2 bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
+                                   <div className="absolute -right-[7px] bottom-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
+                                 </>
+                               ) : (
+                                 <>
+                                   <div className="absolute -right-2 top-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-border/50" />
+                                   <div className="absolute -right-[7px] top-2 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] border-l-[#030712]" />
+                                 </>
+                               )}
                                
                                <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center justify-between sticky top-0 bg-[#030712] z-10">
                                  <div className="flex items-center gap-2">
