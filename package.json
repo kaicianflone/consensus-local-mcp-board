@@ -8,6 +8,7 @@
     "consensus-mcp": "bin/cli.js"
   },
   "scripts": {
+    "dev": "npm run build && node bin/cli.js",
     "build": "tsup src/index.ts src/server.ts --format esm --dts",
     "test": "vitest run",
     "test:watch": "vitest",
