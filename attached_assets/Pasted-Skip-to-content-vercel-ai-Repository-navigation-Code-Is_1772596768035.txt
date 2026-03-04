@@ -1,0 +1,417 @@
+Skip to content
+vercel
+ai
+Repository navigation
+Code
+Issues
+846
+ (846)
+Pull requests
+395
+ (395)
+Agents
+Discussions
+Actions
+Projects
+Security
+Insights
+Owner avatar
+ai
+Public
+vercel/ai
+Go to file
+t
+Name		
+vercel-ai-sdk[bot]
+vercel-ai-sdk[bot]
+Version Packages (#13041)
+cc31c90
+ · 
+6 hours ago
+.changeset
+Version Packages (#13041)
+6 hours ago
+.claude
+chore: add skill for capturing api response test fixtures (#11953)
+2 months ago
+.cursor
+chore: add skill for capturing api response test fixtures (#11953)
+2 months ago
+.github
+docs(contributing): add pre-release cycle documentation (#12998)
+yesterday
+.husky
+chore: add pre-commit hook for pnpm i (#11974)
+2 months ago
+.vscode
+chore (dependencies): update typescript to 5.6.3 (#3522)
+2 years ago
+architecture
+docs: clarify conservative API surfaces and document experimental fea…
+10 hours ago
+assets
+chore: update contents of readme (#2140)
+2 years ago
+content
+feat(gateway): add providerTimeouts to provider options (#13015)
+9 hours ago
+contributing
+docs: clarify conservative API surfaces and document experimental fea…
+10 hours ago
+examples
+Version Packages (#13041)
+6 hours ago
+packages
+Version Packages (#13041)
+6 hours ago
+skills
+docs: add skill to update provider models (#13009)
+13 hours ago
+tools
+feat (provider/klingai): initial klingai provider (#12311)
+last month
+.eslintrc.js
+prettier: enforce semi colons, add trailingComma (#529)
+3 years ago
+.gitignore
+chore(ai): include docs in npm package (#11764)
+2 months ago
+.kodiak.toml
+chore: disable optimistic kodiak merges
+3 years ago
+.npmrc
+chore: upgrade to pnpm 10 (#6396)
+10 months ago
+.prettierignore
+chore (ui/solid): remove solid js support (#5511)
+last year
+AGENTS.md
+docs: clarify conservative API surfaces and document experimental fea…
+10 hours ago
+CHANGELOG.md
+chore(ai): add Alibaba provider to root changelog (#12781)
+last week
+CLAUDE.md
+chore: add CLAUDE.md symlink (#11763)
+2 months ago
+CODE_OF_CONDUCT.md
+docs(CODE_OF_CONDUCT): Vercel Community Code of Conduct (#8077)
+7 months ago
+CONTRIBUTING.md
+chore: clarify contributing docs to require API key setup (#12074)
+2 months ago
+LICENSE
+Rename to just ai (#49)
+3 years ago
+README.md
+feat (provider/perplexity): add sonar-deep-research model (#5996) (#6022
+11 months ago
+package.json
+chore: fix pnpm dev error and warning (#12045)
+2 months ago
+pnpm-lock.yaml
+Version Packages (#13041)
+6 hours ago
+pnpm-workspace.yaml
+build: Remove apps/* from pnpm workspace packages (#9912)
+4 months ago
+socket.yaml
+Add Socket config (#2668)
+2 years ago
+tsconfig.json
+feat (provider/bytedance): initial bytedance provider (#12188)
+2 weeks ago
+tsconfig.with-examples.json
+chore: rename examples/next-openai to examples/ai-e2e-next and re…
+2 weeks ago
+turbo.json
+feat(togetherai): use TOGETHER_API_KEY, deprecate TOGETHER_AI_API_KEY (…
+last week
+Repository files navigation
+README
+Code of conduct
+Contributing
+License
+Security
+hero illustration
+
+AI SDK
+The AI SDK is a provider-agnostic TypeScript toolkit designed to help you build AI-powered applications and agents using popular UI frameworks like Next.js, React, Svelte, Vue, Angular, and runtimes like Node.js.
+
+To learn more about how to use the AI SDK, check out our API Reference and Documentation.
+
+Installation
+You will need Node.js 18+ and npm (or another package manager) installed on your local development machine.
+
+npm install ai
+Skill for Coding Agents
+If you use coding agents such as Claude Code or Cursor, we highly recommend adding the AI SDK skill to your repository:
+
+npx skills add vercel/ai
+Unified Provider Architecture
+The AI SDK provides a unified API to interact with model providers like OpenAI, Anthropic, Google, and more.
+
+By default, the AI SDK uses the Vercel AI Gateway to give you access to all major providers out of the box. Just pass a model string for any supported model:
+
+const result = await generateText({
+  model: 'anthropic/claude-opus-4.5', // or 'openai/gpt-5.2', 'google/gemini-3-flash', etc.
+  prompt: 'Hello!',
+});
+You can also connect to providers directly using their SDK packages:
+
+npm install @ai-sdk/openai @ai-sdk/anthropic @ai-sdk/google
+import { anthropic } from '@ai-sdk/anthropic';
+
+const result = await generateText({
+  model: anthropic('claude-opus-4-5-20250414'), // or openai('gpt-5.2'), google('gemini-3-flash'), etc.
+  prompt: 'Hello!',
+});
+Usage
+Generating Text
+import { generateText } from 'ai';
+
+const { text } = await generateText({
+  model: 'openai/gpt-5', // use Vercel AI Gateway
+  prompt: 'What is an agent?',
+});
+import { generateText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+
+const { text } = await generateText({
+  model: openai('gpt-5'), // use OpenAI Responses API
+  prompt: 'What is an agent?',
+});
+Generating Structured Data
+import { generateText, Output } from 'ai';
+import { z } from 'zod';
+
+const { output } = await generateText({
+  model: 'openai/gpt-5',
+  output: Output.object({
+    schema: z.object({
+      recipe: z.object({
+        name: z.string(),
+        ingredients: z.array(
+          z.object({ name: z.string(), amount: z.string() }),
+        ),
+        steps: z.array(z.string()),
+      }),
+    }),
+  }),
+  prompt: 'Generate a lasagna recipe.',
+});
+Agents
+import { ToolLoopAgent } from 'ai';
+
+const sandboxAgent = new ToolLoopAgent({
+  model: 'openai/gpt-5',
+  system: 'You are an agent with access to a shell environment.',
+  tools: {
+    shell: openai.tools.localShell({
+      execute: async ({ action }) => {
+        const [cmd, ...args] = action.command;
+        const sandbox = await getSandbox(); // Vercel Sandbox
+        const command = await sandbox.runCommand({ cmd, args });
+        return { output: await command.stdout() };
+      },
+    }),
+  },
+});
+UI Integration
+The AI SDK UI module provides a set of hooks that help you build chatbots and generative user interfaces. These hooks are framework agnostic, so they can be used in Next.js, React, Svelte, and Vue.
+
+You need to install the package for your framework, e.g.:
+
+npm install @ai-sdk/react
+Agent @/agent/image-generation-agent.ts
+import { openai } from '@ai-sdk/openai';
+import { ToolLoopAgent, InferAgentUIMessage } from 'ai';
+
+export const imageGenerationAgent = new ToolLoopAgent({
+  model: openai('gpt-5'),
+  tools: {
+    generateImage: openai.tools.imageGeneration({
+      partialImages: 3,
+    }),
+  },
+});
+
+export type ImageGenerationAgentMessage = InferAgentUIMessage<
+  typeof imageGenerationAgent
+>;
+Route (Next.js App Router) @/app/api/chat/route.ts
+import { imageGenerationAgent } from '@/agent/image-generation-agent';
+import { createAgentUIStreamResponse } from 'ai';
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+
+  return createAgentUIStreamResponse({
+    agent: imageGenerationAgent,
+    messages,
+  });
+}
+UI Component for Tool @/component/image-generation-view.tsx
+import { openai } from '@ai-sdk/openai';
+import { UIToolInvocation } from 'ai';
+
+export default function ImageGenerationView({
+  invocation,
+}: {
+  invocation: UIToolInvocation<ReturnType<typeof openai.tools.imageGeneration>>;
+}) {
+  switch (invocation.state) {
+    case 'input-available':
+      return <div>Generating image...</div>;
+    case 'output-available':
+      return <img src={`data:image/png;base64,${invocation.output.result}`} />;
+  }
+}
+Page @/app/page.tsx
+'use client';
+
+import { ImageGenerationAgentMessage } from '@/agent/image-generation-agent';
+import ImageGenerationView from '@/component/image-generation-view';
+import { useChat } from '@ai-sdk/react';
+
+export default function Page() {
+  const { messages, status, sendMessage } =
+    useChat<ImageGenerationAgentMessage>();
+
+  const [input, setInput] = useState('');
+  const handleSubmit = e => {
+    e.preventDefault();
+    sendMessage({ text: input });
+    setInput('');
+  };
+
+  return (
+    <div>
+      {messages.map(message => (
+        <div key={message.id}>
+          <strong>{`${message.role}: `}</strong>
+          {message.parts.map((part, index) => {
+            switch (part.type) {
+              case 'text':
+                return <div key={index}>{part.text}</div>;
+              case 'tool-generateImage':
+                return <ImageGenerationView key={index} invocation={part} />;
+            }
+          })}
+        </div>
+      ))}
+
+      <form onSubmit={handleSubmit}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          disabled={status !== 'ready'}
+        />
+      </form>
+    </div>
+  );
+}
+Templates
+We've built templates that include AI SDK integrations for different use cases, providers, and frameworks. You can use these templates to get started with your AI-powered application.
+
+Community
+The AI SDK community can be found on the Vercel Community where you can ask questions, voice ideas, and share your projects with other people.
+
+Contributing
+Contributions to the AI SDK are welcome and highly appreciated. However, before you jump right into it, we would like you to review our Contribution Guidelines to make sure you have smooth experience contributing to AI SDK.
+
+Authors
+This library is created by Vercel and Next.js team members, with contributions from the Open Source Community.
+
+About
+The AI Toolkit for TypeScript. From the creators of Next.js, the AI SDK is a free open-source library for building AI-powered applications and agents
+
+ai-sdk.dev
+Topics
+react javascript typescript vue nextjs svelte artificial-intelligence gemini openai language-model vercel llm generative-ai anthropic generative-ui
+Resources
+ Readme
+License
+ View license
+Code of conduct
+ Code of conduct
+Contributing
+ Contributing
+Security policy
+ Security policy
+ Activity
+ Custom properties
+Stars
+ 22.3k stars
+Watchers
+ 134 watching
+Forks
+ 3.9k forks
+Report repository
+Releases 5,000+
+@ai-sdk/gateway@2.0.50
+Latest
+5 hours ago
++ 13,099 releases
+Deployments
+500+
+ Preview
+ Production 6 hours ago
++ more deployments
+Used by 91.4k
+@HinnyTsang
+@mayankdaga81
+@synthetic-intelligence
+@BudEcosystem
+@UniverseAI-Lab
+@anavvanzin
+@anavvanzin
+@GoodnessFx
++ 91,426
+Contributors
+699
+@lgrammel
+@github-actions[bot]
+@vercel-ai-sdk[bot]
+@nicoalbanese
+@gr2m
+@shaper
+@dancer
+@MaxLeiter
+@jaredpalmer
+@aayush-kapoor
+@samdenty
+@shuding
+@jeremyphilemon
+@dependabot[bot]
++ 685 contributors
+Languages
+TypeScript
+76.5%
+ 
+MDX
+23.1%
+ 
+JavaScript
+0.3%
+ 
+Vue
+0.1%
+ 
+CSS
+0.0%
+ 
+Svelte
+0.0%
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information

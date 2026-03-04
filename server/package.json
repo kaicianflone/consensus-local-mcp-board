@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@chat-adapter/slack": "^4.15.0",
+    "@chat-adapter/teams": "^4.15.0",
     "@local-mcp-board/shared": "0.0.1",
     "better-sqlite3": "^11.7.0",
     "chat": "^4.15.0",
