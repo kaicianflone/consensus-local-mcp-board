@@ -22,7 +22,7 @@ const EVENT_COLORS: Record<string, string> = {
 
 export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
-  const [widths, setWidths] = useState({ time: 140, type: 120, duration: 80 });
+  const [widths, setWidths] = useState({ time: 140, type: 120, duration: 80, status: 150 });
 
   const handleMouseDown = (e: React.MouseEvent, column: keyof typeof widths) => {
     e.preventDefault();
@@ -118,7 +118,14 @@ export function EventTimeline() {
                     className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
                   />
                 </th>
-                <th className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20">
+                <th style={{ width: widths.status }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header">
+                  Status
+                  <div 
+                    onMouseDown={(e) => handleMouseDown(e, 'status')}
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
+                  />
+                </th>
+                <th className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground">
                   Details
                 </th>
               </tr>
@@ -153,15 +160,15 @@ export function EventTimeline() {
                         {duration}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 align-top relative group/cell">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-foreground/90 truncate font-medium">{summary}</span>
-                        <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                           <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
-                        </div>
+                    <td className="py-1.5 px-2 align-top border-r border-border/5">
+                      <span className="text-[10px] text-foreground/90 truncate font-medium">{summary}</span>
+                    </td>
+                    <td className="py-1.5 px-2 align-top relative group/cell text-center">
+                      <div className="inline-flex items-center justify-center">
+                         <Info className="h-3.5 w-3.5 text-emerald-500/80 cursor-help hover:text-emerald-400 transition-colors" />
                       </div>
                       {/* Detailed info on hover - fixed positioning and styling */}
-                      <div className="fixed hidden group-hover/cell:block z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-none text-[10px] font-mono whitespace-pre-wrap right-6 top-1/4 max-h-[60vh] overflow-y-auto shadow-emerald-500/10">
+                      <div className="fixed hidden group-hover/cell:block z-[9999] bg-[#030712] text-popover-foreground border border-border shadow-2xl rounded-md p-3 max-w-sm break-words pointer-events-none text-[10px] font-mono whitespace-pre-wrap right-6 top-1/4 max-h-[60vh] overflow-y-auto shadow-emerald-500/10 text-left">
                         <div className="font-bold border-b border-border mb-2 pb-1 text-emerald-500 flex items-center gap-2">
                           <Info className="h-3 w-3" /> Raw Event Data
                         </div>
