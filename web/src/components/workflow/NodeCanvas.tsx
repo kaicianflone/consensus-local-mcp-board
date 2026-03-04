@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, ChevronRight } from 'lucide-react';
+import { GripVertical, Trash2, ChevronRight, Layers } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { PALETTE, NODE_COLORS, NODE_ICON_COLORS, type NodeType } from './NodePalette';
@@ -29,21 +29,141 @@ export type WorkflowNode = {
   config: Record<string, any>;
 };
 
+function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: WorkflowNode; isSelected: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void; compact?: boolean }) {
+  const paletteItem = PALETTE.find((p) => p.type === node.type);
+  const Icon = paletteItem?.icon;
+
+  return (
+    <div
+      className={cn(
+        'group relative flex items-center gap-2 rounded-lg border px-3 transition-all cursor-pointer',
+        compact ? 'py-2 flex-1 min-w-0' : 'py-2.5',
+        NODE_COLORS[node.type] || 'border-border/50 bg-card',
+        isSelected && 'ring-1 ring-primary',
+      )}
+      onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
+    >
+      {Icon && <Icon className={cn('h-4 w-4 shrink-0', NODE_ICON_COLORS[node.type] || 'text-muted-foreground')} />}
+
+      <div className="flex-1 min-w-0">
+        <div className={cn('font-medium truncate', compact ? 'text-xs' : 'text-sm')}>{node.label}</div>
+        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <span>{node.type}</span>
+          {node.type === 'agent' && node.config?.model && (
+            <span className="text-blue-400/80">{node.config.model}</span>
+          )}
+        </div>
+        {node.type === 'agent' && (
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {node.config?.agentCount && (
+              <span className="inline-flex items-center rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium text-blue-400">
+                {node.config.agentCount} agents
+              </span>
+            )}
+            <span className="inline-flex items-center rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] text-blue-400/70">
+              {node.config?.personaMode === 'manual' ? 'manual personas' : 'auto personas'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(node.id);
+        }}
+      >
+        <Trash2 className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+}
+
 interface SortableNodeProps {
   node: WorkflowNode;
   isSelected: boolean;
+  selectedId: string | null;
   isLast: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-function SortableNode({ node, isSelected, isLast, onSelect, onDelete }: SortableNodeProps) {
+function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete }: SortableNodeProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  if (node.type === 'group') {
+    const children: WorkflowNode[] = Array.isArray(node.config?.children) ? node.config.children : [];
+
+    return (
+      <>
+        <div
+          ref={setNodeRef}
+          style={style}
+          className={cn(
+            'rounded-lg border-2 border-dashed transition-all',
+            'border-cyan-500/30 bg-cyan-500/5',
+            isSelected && 'ring-1 ring-primary',
+            isDragging && 'opacity-50 z-50'
+          )}
+        >
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-cyan-500/20">
+            <button
+              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+            <Layers className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="text-xs font-medium text-cyan-400">{node.label}</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">{children.length} parallel</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(node.id);
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+          <div className="flex gap-2 p-2">
+            {children.map((child) => (
+              <NodeContent
+                key={child.id}
+                node={child}
+                isSelected={selectedId === child.id}
+                onSelect={onSelect}
+                onDelete={onDelete}
+                compact
+              />
+            ))}
+            {children.length === 0 && (
+              <div className="flex-1 flex items-center justify-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
+                No children — configure in settings
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!isLast && (
+          <div className="flex justify-center py-0.5">
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 rotate-90" />
+          </div>
+        )}
+      </>
+    );
+  }
 
   const paletteItem = PALETTE.find((p) => p.type === node.type);
   const Icon = paletteItem?.icon;
@@ -171,6 +291,7 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
                     key={node.id}
                     node={node}
                     isSelected={selectedId === node.id}
+                    selectedId={selectedId}
                     isLast={i === nodes.length - 1}
                     onSelect={onSelect}
                     onDelete={onDelete}

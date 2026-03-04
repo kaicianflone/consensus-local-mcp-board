@@ -173,14 +173,19 @@ export function listParticipants(boardId: string) {
   return db.prepare('SELECT * FROM participants WHERE board_id=? ORDER BY created_at DESC').all(boardId);
 }
 
-export function updateParticipant(id: string, patch: { reputation?: number; weight?: number; role?: string; status?: string }) {
+export function updateParticipant(id: string, patch: { reputation?: number; weight?: number; role?: string; status?: string; metadata?: Record<string, unknown> }) {
   const current = db.prepare('SELECT * FROM participants WHERE id=?').get(id) as any;
   if (!current) return null;
   const reputation = patch.reputation ?? current.reputation;
   const weight = patch.weight ?? current.weight;
   const role = patch.role ?? current.role;
   const status = patch.status ?? current.status;
-  db.prepare('UPDATE participants SET reputation=?, weight=?, role=?, status=?, updated_at=? WHERE id=?').run(reputation, weight, role, status, Date.now(), id);
+  let metadataJson = current.metadata_json || '{}';
+  if (patch.metadata) {
+    const existing = JSON.parse(metadataJson);
+    metadataJson = JSON.stringify({ ...existing, ...patch.metadata });
+  }
+  db.prepare('UPDATE participants SET reputation=?, weight=?, role=?, status=?, metadata_json=?, updated_at=? WHERE id=?').run(reputation, weight, role, status, metadataJson, Date.now(), id);
   return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
 }
 

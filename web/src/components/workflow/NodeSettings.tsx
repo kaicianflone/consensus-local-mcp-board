@@ -4,8 +4,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
-import { Settings, Save, X } from 'lucide-react';
+import { Settings, Save, X, Plus, Trash2 } from 'lucide-react';
 import type { WorkflowNode } from './NodeCanvas';
+import { NODE_ICON_COLORS, PALETTE, type NodeType } from './NodePalette';
 
 const CHAT_CHANNELS = [
   { id: 'slack', label: 'Slack' },
@@ -210,6 +211,10 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
           </>
         )}
 
+        {node.type === 'group' && (
+          <GroupChildrenEditor groupChildren={draft.children || []} onChange={(children) => set('children', children)} />
+        )}
+
         {editing && (
           <div className="flex gap-2 pt-2 border-t">
             <Button size="sm" onClick={handleSave} className="gap-1.5">
@@ -222,5 +227,62 @@ export function NodeSettings({ node, onUpdate }: NodeSettingsProps) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+const GROUP_CHILD_TYPES: { type: NodeType; label: string }[] = [
+  { type: 'agent', label: 'Agent' },
+  { type: 'guard', label: 'Guard' },
+  { type: 'hitl', label: 'HITL' },
+  { type: 'action', label: 'Action' },
+];
+
+function childDefaults(type: NodeType): Record<string, any> {
+  if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, agentCount: 3, personaMode: 'auto', personaNames: '', systemPrompt: '' };
+  if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', requiredVotes: 2, timeoutSec: 900 };
+  if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7 };
+  return { action: 'noop' };
+}
+
+function GroupChildrenEditor({ groupChildren, onChange }: { groupChildren: any[]; onChange: (children: any[]) => void }) {
+  const [addType, setAddType] = useState<NodeType>('agent');
+
+  function addChild() {
+    const id = `${addType}-${Date.now().toString(36)}`;
+    const labels: Record<string, string> = { agent: 'Agent', guard: 'Guard', hitl: 'HITL', action: 'Action' };
+    onChange([...groupChildren, { id, type: addType, label: labels[addType] || addType, config: childDefaults(addType) }]);
+  }
+
+  function removeChild(id: string) {
+    onChange(groupChildren.filter((c: any) => c.id !== id));
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs font-medium text-muted-foreground">Parallel Children ({groupChildren.length})</div>
+      {groupChildren.map((child: any) => {
+        const paletteItem = PALETTE.find((p) => p.type === child.type);
+        const Icon = paletteItem?.icon;
+        return (
+          <div key={child.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md border border-border/50 bg-accent/20">
+            {Icon && <Icon className={`h-3.5 w-3.5 shrink-0 ${NODE_ICON_COLORS[child.type as NodeType] || ''}`} />}
+            <span className="text-xs flex-1 truncate">{child.label}</span>
+            <Badge variant="outline" className="text-[10px]">{child.type}</Badge>
+            <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => removeChild(child.id)}>
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        );
+      })}
+      <div className="flex gap-2">
+        <Select value={addType} onChange={(e) => setAddType(e.target.value as NodeType)} className="flex-1">
+          {GROUP_CHILD_TYPES.map((t) => <option key={t.type} value={t.type}>{t.label}</option>)}
+        </Select>
+        <Button size="sm" variant="outline" className="gap-1 h-8 text-xs" onClick={addChild}>
+          <Plus className="h-3 w-3" /> Add
+        </Button>
+      </div>
+      <p className="text-[10px] text-muted-foreground">Click a child on the canvas to edit its settings individually.</p>
+    </div>
   );
 }

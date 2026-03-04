@@ -5,8 +5,17 @@ import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Bot, Plus, Save, X, Pencil, UserPlus, Copy } from 'lucide-react';
+import { Bot, Plus, Save, X, Pencil, UserPlus, Copy, MessageSquare } from 'lucide-react';
 import { connectAgent, listAgents, listParticipants, createParticipant, updateParticipant, assignPolicy } from '../../lib/api';
+
+const CHAT_ADAPTERS = [
+  { value: '', label: 'None' },
+  { value: 'slack', label: 'Slack' },
+  { value: 'discord', label: 'Discord' },
+  { value: 'teams', label: 'Teams' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'googlechat', label: 'Google Chat' },
+];
 
 interface AgentsPanelProps {
   boardId: string;
@@ -20,6 +29,14 @@ export function AgentsPanel({ boardId }: AgentsPanelProps) {
   const [newApiKey, setNewApiKey] = useState('');
   const [editingParticipant, setEditingParticipant] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
+
+  function parseMetadata(p: any): Record<string, any> {
+    try {
+      return JSON.parse(p.metadata_json || '{}');
+    } catch {
+      return {};
+    }
+  }
 
   async function refresh() {
     try {
@@ -68,13 +85,27 @@ export function AgentsPanel({ boardId }: AgentsPanelProps) {
   }
 
   function startEdit(p: any) {
+    const meta = parseMetadata(p);
     setEditingParticipant(p.id);
-    setEditDraft({ weight: p.weight, reputation: p.reputation, role: p.role || 'voter' });
+    setEditDraft({
+      weight: p.weight,
+      reputation: p.reputation,
+      role: p.role || 'voter',
+      chatAdapter: meta.chatAdapter || '',
+      chatHandle: meta.chatHandle || '',
+    });
   }
 
   async function saveEdit(id: string) {
     try {
-      await updateParticipant(id, { weight: Number(editDraft.weight), reputation: Number(editDraft.reputation) });
+      await updateParticipant(id, {
+        weight: Number(editDraft.weight),
+        reputation: Number(editDraft.reputation),
+        metadata: {
+          chatAdapter: editDraft.chatAdapter || '',
+          chatHandle: editDraft.chatHandle || '',
+        },
+      });
       setEditingParticipant(null);
       await refresh();
     } catch {}
@@ -118,43 +149,68 @@ export function AgentsPanel({ boardId }: AgentsPanelProps) {
         {participants.length > 0 && (
           <div className="pt-2 border-t space-y-2">
             <div className="text-xs font-medium text-muted-foreground">Participants</div>
-            {participants.map((p: any) => (
-              <div key={p.id} className="rounded-md border border-border/50 px-2 py-1.5">
-                {editingParticipant === p.id ? (
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <label className="flex-1 space-y-1">
-                        <span className="text-[10px] text-muted-foreground">Weight</span>
-                        <Input className="h-7 text-xs" type="number" step="0.1" value={editDraft.weight} onChange={(e) => setEditDraft({ ...editDraft, weight: e.target.value })} />
-                      </label>
-                      <label className="flex-1 space-y-1">
-                        <span className="text-[10px] text-muted-foreground">Reputation</span>
-                        <Input className="h-7 text-xs" type="number" step="0.01" min="0" max="1" value={editDraft.reputation} onChange={(e) => setEditDraft({ ...editDraft, reputation: e.target.value })} />
-                      </label>
+            {participants.map((p: any) => {
+              const meta = parseMetadata(p);
+              return (
+                <div key={p.id} className="rounded-md border border-border/50 px-2 py-1.5">
+                  {editingParticipant === p.id ? (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <label className="flex-1 space-y-1">
+                          <span className="text-[10px] text-muted-foreground">Weight</span>
+                          <Input className="h-7 text-xs" type="number" step="0.1" value={editDraft.weight} onChange={(e) => setEditDraft({ ...editDraft, weight: e.target.value })} />
+                        </label>
+                        <label className="flex-1 space-y-1">
+                          <span className="text-[10px] text-muted-foreground">Reputation</span>
+                          <Input className="h-7 text-xs" type="number" step="0.01" min="0" max="1" value={editDraft.reputation} onChange={(e) => setEditDraft({ ...editDraft, reputation: e.target.value })} />
+                        </label>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-muted-foreground">Chat Link</span>
+                        <div className="flex gap-2">
+                          <Select className="h-7 text-xs flex-1" value={editDraft.chatAdapter} onChange={(e) => setEditDraft({ ...editDraft, chatAdapter: e.target.value })}>
+                            {CHAT_ADAPTERS.map((a) => (
+                              <option key={a.value} value={a.value}>{a.label}</option>
+                            ))}
+                          </Select>
+                          <Input
+                            className="h-7 text-xs flex-1"
+                            placeholder="Chat handle / ID"
+                            value={editDraft.chatHandle}
+                            onChange={(e) => setEditDraft({ ...editDraft, chatHandle: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" className="h-6 text-xs gap-1" onClick={() => saveEdit(p.id)}>
+                          <Save className="h-3 w-3" /> Save
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => setEditingParticipant(null)}>
+                          <X className="h-3 w-3" /> Cancel
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-1.5">
-                      <Button size="sm" className="h-6 text-xs gap-1" onClick={() => saveEdit(p.id)}>
-                        <Save className="h-3 w-3" /> Save
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{p.subject_type}</Badge>
+                        <span className="text-xs truncate">{p.subject_id}</span>
+                        <span className="text-[10px] text-muted-foreground">w={p.weight} r={p.reputation}</span>
+                        {meta.chatAdapter && meta.chatHandle && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-1 shrink-0">
+                            <MessageSquare className="h-2.5 w-2.5" />
+                            {meta.chatAdapter}: {meta.chatHandle}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEdit(p)}>
+                        <Pencil className="h-3 w-3" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => setEditingParticipant(null)}>
-                        <X className="h-3 w-3" /> Cancel
-                      </Button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{p.subject_type}</Badge>
-                      <span className="text-xs truncate">{p.subject_id}</span>
-                      <span className="text-[10px] text-muted-foreground">w={p.weight} r={p.reputation}</span>
-                    </div>
-                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEdit(p)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>

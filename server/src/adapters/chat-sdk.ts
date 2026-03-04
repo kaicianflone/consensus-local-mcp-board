@@ -1,6 +1,12 @@
 import { db } from '../db/store.js';
 import { getCredential } from '../db/credentials.js';
 
+type ChatTarget = {
+  subjectId: string;
+  adapter: string;
+  handle: string;
+};
+
 type ChatPrompt = {
   boardId: string;
   runId: string;
@@ -8,6 +14,7 @@ type ChatPrompt = {
   quorum: number;
   risk: number;
   threshold: number;
+  chatTargets?: ChatTarget[];
 };
 
 const chatProvider = process.env.CHAT_PROVIDER ?? 'webhook';
@@ -38,15 +45,25 @@ async function sendViaWebhook(message: string, meta: Record<string, unknown>) {
 export async function sendHitlPrompt(prompt: ChatPrompt) {
   const message = `Guard tool alert: run ${prompt.runId} reached quorum ${(prompt.quorum * 100).toFixed(0)}% but risk ${prompt.risk.toFixed(2)} >= ${prompt.threshold.toFixed(2)}, so HITL is required. Reply YES or NO.`;
 
+  const targetInfo = prompt.chatTargets && prompt.chatTargets.length > 0
+    ? prompt.chatTargets.map((t) => `${t.subjectId} via ${t.adapter}:${t.handle}`).join(', ')
+    : 'broadcast';
+
   if (chatProvider === 'stdout') {
-    console.log('[chat-sdk]', message);
-    return { delivered: true, provider: 'stdout', message };
+    console.log('[chat-sdk]', message, `[targets: ${targetInfo}]`);
+    return { delivered: true, provider: 'stdout', message, targets: targetInfo };
   }
 
-  return sendViaWebhook(message, {
+  const meta: Record<string, unknown> = {
     boardId: prompt.boardId,
     runId: prompt.runId,
     approverHint: prompt.approverHint ?? 'human',
     type: 'hitl_request'
-  });
+  };
+
+  if (prompt.chatTargets && prompt.chatTargets.length > 0) {
+    meta.chatTargets = prompt.chatTargets;
+  }
+
+  return sendViaWebhook(message, meta);
 }

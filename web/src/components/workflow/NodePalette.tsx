@@ -1,14 +1,15 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
-import { Zap, Shield, Users, Bot, Play } from 'lucide-react';
+import { Zap, Shield, Users, Bot, Play, Layers } from 'lucide-react';
 
-export type NodeType = 'trigger' | 'agent' | 'guard' | 'hitl' | 'action';
+export type NodeType = 'trigger' | 'agent' | 'guard' | 'hitl' | 'action' | 'group';
 
 export const PALETTE: { type: NodeType; label: string; icon: React.ElementType; color: string }[] = [
   { type: 'trigger', label: 'Trigger', icon: Zap, color: 'text-amber-400' },
   { type: 'agent', label: 'Agent (ai-sdk)', icon: Bot, color: 'text-blue-400' },
   { type: 'guard', label: 'Guard (consensus)', icon: Shield, color: 'text-emerald-400' },
   { type: 'hitl', label: 'HITL (chat-sdk)', icon: Users, color: 'text-purple-400' },
+  { type: 'group', label: 'Parallel Group', icon: Layers, color: 'text-cyan-400' },
   { type: 'action', label: 'Action', icon: Play, color: 'text-orange-400' },
 ];
 
@@ -18,6 +19,7 @@ export const NODE_COLORS: Record<NodeType, string> = {
   guard: 'border-emerald-500/40 bg-emerald-500/5',
   hitl: 'border-purple-500/40 bg-purple-500/5',
   action: 'border-orange-500/40 bg-orange-500/5',
+  group: 'border-cyan-500/40 bg-cyan-500/5',
 };
 
 export const NODE_ICON_COLORS: Record<NodeType, string> = {
@@ -26,6 +28,7 @@ export const NODE_ICON_COLORS: Record<NodeType, string> = {
   guard: 'text-emerald-400',
   hitl: 'text-purple-400',
   action: 'text-orange-400',
+  group: 'text-cyan-400',
 };
 
 interface NodePaletteProps {

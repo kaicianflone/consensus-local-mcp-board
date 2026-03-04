@@ -209,7 +209,7 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
         output
       });
 
-      if (output?.pause === true && node.type === 'hitl') {
+      if (output?.pause === true && (node.type === 'hitl' || node.type === 'group')) {
         appendEvent(boardId, runId, 'WORKFLOW_WAITING_HITL', {
           workflow_id: workflowId,
           engine,
@@ -358,15 +358,54 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     const threshold = Number(node.config?.threshold ?? 0.7);
     if (risk < threshold) return { pause: false, skipped: true, risk, threshold };
 
+    const boardParticipants = listParticipants(ids.boardId) as any[];
+    const chatLinkedParticipants = boardParticipants
+      .filter((p: any) => {
+        const meta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
+        return meta.chatAdapter && meta.chatHandle;
+      })
+      .map((p: any) => {
+        const meta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
+        return { subjectId: p.subject_id, adapter: meta.chatAdapter, handle: meta.chatHandle };
+      });
+
     await sendHitlPrompt({
       boardId: ids.boardId,
       runId: ids.runId,
       quorum: 0.7,
       risk,
       threshold,
-      approverHint: node.config?.approver || 'human'
+      approverHint: node.config?.approver || 'human',
+      chatTargets: chatLinkedParticipants.length > 0 ? chatLinkedParticipants : undefined
     });
-    return { pause: true, risk, threshold };
+    return { pause: true, risk, threshold, chatTargets: chatLinkedParticipants };
+  }
+
+  if (node.type === 'group') {
+    const children = Array.isArray(node.config?.children) ? node.config.children : [];
+    if (!children.length) return { ok: true, group: true, children: [] };
+
+    const childResults = await Promise.all(
+      children.map((child: any) => executeNode(child, context, ids))
+    );
+
+    const merged: Record<string, any> = {};
+    let hasPause = false;
+    let pauseDetails: any = null;
+    for (let i = 0; i < children.length; i++) {
+      merged[children[i].id] = childResults[i];
+      context[children[i].id] = childResults[i];
+      if (childResults[i]?.pause === true) {
+        hasPause = true;
+        pauseDetails = { childId: children[i].id, childType: children[i].type, ...childResults[i] };
+      }
+    }
+
+    if (hasPause) {
+      return { pause: true, group: true, children: children.map((c: any) => c.id), results: merged, pauseDetails };
+    }
+
+    return { ok: true, group: true, children: children.map((c: any) => c.id), results: merged };
   }
 
   if (node.type === 'action') {

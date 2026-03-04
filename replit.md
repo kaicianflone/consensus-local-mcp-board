@@ -74,10 +74,27 @@ This is a monorepo with three workspaces:
 - Canvas shows agent count badge, model name, and persona mode indicator on agent nodes
 - Agent node settings: Agent Count, Model, System Prompt, Persona Mode, Persona Names, Temperature, Tool Access
 
+## Parallel Group Nodes
+
+- New `group` node type wraps multiple children that execute in parallel via `Promise.all`
+- Canvas renders group nodes as a dashed cyan-bordered container with children displayed side-by-side horizontally
+- Group settings panel allows adding/removing child nodes (agent, guard, hitl, action types)
+- Clicking a child node within a group selects it for individual settings editing
+- Template 1 uses a group node containing an Agent (3 N-LLM) + HITL (Consensus Vote) in parallel
+- Node types: `trigger`, `agent`, `guard`, `hitl`, `group`, `action`
+- Valid transitions include: `guard → group`, `group → hitl`, `group → action`, `group → guard`
+
+## Participant Chat Linking
+
+- Agents & Participants panel supports linking participants to chat adapters (Slack, Discord, Teams, Telegram, Google Chat)
+- Each participant can have a chat adapter and handle (e.g., Slack user ID) stored in their metadata
+- When an HITL node fires, it looks up chat-linked participants and includes their adapter/handle in the prompt delivery
+- Chat links appear as badges on participant cards in the panel
+
 ## Adapter Credential Resolution
 
 - `ai-sdk.ts` uses Vercel AI SDK (`generateText` from `ai` package with `@ai-sdk/openai` provider), falls back to deterministic evaluation when no API key is available
-- `chat-sdk.ts` checks stored Slack credentials before falling back to `CHAT_WEBHOOK_URL` / `CHAT_WEBHOOK_BEARER` env vars
+- `chat-sdk.ts` checks stored Slack credentials before falling back to `CHAT_WEBHOOK_URL` / `CHAT_WEBHOOK_BEARER` env vars; supports targeted delivery via chat-linked participants
 
 ## Development
 

@@ -20,7 +20,19 @@ function defaults(type: NodeType): Record<string, any> {
   if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7, hitlThreshold: 0.7, policyBinding: 'explicit', assignedAgents: ['default-agent'], weights: { security: 0.5, reliability: 0.3, performance: 0.2 } };
   if (type === 'hitl') return { channel: 'slack', promptMode: 'yes-no', timeoutSec: 900, weightMode: 'weighted', requiredVotes: 2 };
   if (type === 'trigger') return { source: 'github.pr.opened', provider: 'github-mcp', repo: '', branch: 'main', channel: 'slack', chatType: 'group', matchText: '', fromUsers: '' };
+  if (type === 'group') return { children: [] };
   return { action: 'noop' };
+}
+
+function findNodeById(nodes: WorkflowNode[], id: string): WorkflowNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.type === 'group' && Array.isArray(n.config?.children)) {
+      const child = n.config.children.find((c: any) => c.id === id);
+      if (child) return child;
+    }
+  }
+  return null;
 }
 
 const STATUS_ICON: Record<string, React.ElementType> = {
@@ -44,7 +56,7 @@ export default function WorkflowsDashboard() {
   const [runs, setRuns] = useState<any[]>([]);
   const [boardId] = useState('workflow-system');
 
-  const selected = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
+  const selected = useMemo(() => findNodeById(nodes, selectedId || '') || null, [nodes, selectedId]);
 
   async function ensureDefaultBoard() {
     try {
@@ -87,6 +99,7 @@ export default function WorkflowsDashboard() {
       agent: 'Agent (ai-sdk)',
       guard: 'Guard (consensus)',
       hitl: 'HITL (chat-sdk)',
+      group: 'Parallel Group',
       action: 'Action',
     };
     setNodes((prev) => [...prev, { id, type, label: labels[type], config: defaults(type) }]);
@@ -94,12 +107,35 @@ export default function WorkflowsDashboard() {
   }
 
   function deleteNode(id: string) {
-    setNodes((prev) => prev.filter((n) => n.id !== id));
+    setNodes((prev) => {
+      const topLevel = prev.find((n) => n.id === id);
+      if (topLevel) return prev.filter((n) => n.id !== id);
+      return prev.map((n) => {
+        if (n.type === 'group' && Array.isArray(n.config?.children)) {
+          const filtered = n.config.children.filter((c: any) => c.id !== id);
+          if (filtered.length !== n.config.children.length) {
+            return { ...n, config: { ...n.config, children: filtered } };
+          }
+        }
+        return n;
+      });
+    });
     if (selectedId === id) setSelectedId(null);
   }
 
   function handleUpdateConfig(id: string, config: Record<string, any>) {
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, config } : n)));
+    setNodes((prev) => prev.map((n) => {
+      if (n.id === id) return { ...n, config };
+      if (n.type === 'group' && Array.isArray(n.config?.children)) {
+        const childIdx = n.config.children.findIndex((c: any) => c.id === id);
+        if (childIdx >= 0) {
+          const newChildren = [...n.config.children];
+          newChildren[childIdx] = { ...newChildren[childIdx], config };
+          return { ...n, config: { ...n.config, children: newChildren } };
+        }
+      }
+      return n;
+    }));
   }
 
   async function saveWorkflow() {

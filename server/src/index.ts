@@ -20,8 +20,10 @@ const TEMPLATE_1 = {
   nodes: [
     { id: 'trigger-github-pr', type: 'trigger', label: 'GitHub PR Opened', config: { source: 'github.pr.opened', repo: '', branch: 'main' } },
     { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, assignedAgents: ['merge-agent-1'], policyPack: 'merge-default' } },
-    { id: 'persona-load', type: 'action', label: 'Load 3 Personas + Reputation', config: { action: 'persona.load', count: 3, sourceTool: 'consensus-persona-tools', useReputationWeights: true } },
-    { id: 'hitl-weighted-votes', type: 'hitl', label: 'Slack Weighted HITL Votes (2)', config: { channel: 'slack', mode: 'weighted-vote', requiredVotes: 2, weights: { reviewerA: 0.6, reviewerB: 0.4 }, threshold: 0.6 } },
+    { id: 'parallel-review', type: 'group', label: 'Parallel Review', config: { children: [
+      { id: 'agent-nlm-reviewers', type: 'agent', label: '3 N-LLM Reviewers', config: { agentCount: 3, personaMode: 'auto', model: 'gpt-4o-mini' } },
+      { id: 'hitl-consensus', type: 'hitl', label: 'Consensus Vote', config: { channel: 'slack', requiredVotes: 2, mode: 'weighted-vote' } }
+    ] } },
     { id: 'hitl-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
     { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHitlYes: true, idempotencyKeyFrom: 'pr.sha' } }
   ]
@@ -33,11 +35,12 @@ function validateWorkflowDefinition(definition: any) {
   if (nodes[0]?.type !== 'trigger') return 'First node must be a trigger';
 
   const allowedNext: Record<string, string[]> = {
-    trigger: ['agent', 'guard', 'action'],
-    agent: ['guard', 'hitl', 'action'],
-    guard: ['hitl', 'action'],
+    trigger: ['agent', 'guard', 'action', 'group'],
+    agent: ['guard', 'hitl', 'action', 'group'],
+    guard: ['hitl', 'action', 'group'],
     hitl: ['hitl', 'action', 'guard'],
-    action: ['action']
+    action: ['action'],
+    group: ['hitl', 'action', 'guard']
   };
 
   for (let i = 0; i < nodes.length; i++) {
@@ -45,7 +48,7 @@ function validateWorkflowDefinition(definition: any) {
     const t = node.type;
     const c = node.config || {};
 
-    if (!['trigger', 'agent', 'guard', 'hitl', 'action'].includes(t)) {
+    if (!['trigger', 'agent', 'guard', 'hitl', 'action', 'group'].includes(t)) {
       return `Invalid node type at index ${i}: ${String(t)}`;
     }
 
@@ -80,6 +83,18 @@ function validateWorkflowDefinition(definition: any) {
 
     if (t === 'action') {
       if (!String(c.action || '').trim()) return `Action index ${i}: action is required`;
+    }
+
+    if (t === 'group') {
+      const children = Array.isArray(c.children) ? c.children : [];
+      if (!children.length) return `Group index ${i}: must have at least one child node`;
+      for (let j = 0; j < children.length; j++) {
+        const child = children[j] || {};
+        const ct = child.type;
+        if (!['agent', 'guard', 'hitl', 'action'].includes(ct)) {
+          return `Group index ${i}, child ${j}: invalid type ${String(ct)}`;
+        }
+      }
     }
   }
 
@@ -184,7 +199,8 @@ app.patch('/api/participants/:id', (req, res) => {
       reputation: z.number().min(0).max(1).optional(),
       weight: z.number().min(0).max(100).optional(),
       role: z.string().optional(),
-      status: z.enum(['active', 'disabled']).optional()
+      status: z.enum(['active', 'disabled']).optional(),
+      metadata: z.record(z.any()).optional()
     }).parse(req.body || {});
     const participant = updateParticipant(req.params.id, body);
     if (!participant) return res.status(404).json(err('PARTICIPANT_NOT_FOUND', 'Participant not found'));
