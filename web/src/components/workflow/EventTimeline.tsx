@@ -22,7 +22,7 @@ const EVENT_COLORS: Record<string, string> = {
 
 export function EventTimeline() {
   const [events, setEvents] = useState<any[]>([]);
-  const [widths, setWidths] = useState({ time: 100, type: 120, status: 80 });
+  const [widths, setWidths] = useState({ time: 140, type: 120, duration: 80 });
 
   const handleMouseDown = (e: React.MouseEvent, column: keyof typeof widths) => {
     e.preventDefault();
@@ -43,7 +43,36 @@ export function EventTimeline() {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  useEffect(() => {
+  const formatTime = (ts: number) => {
+    const date = new Date(ts);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[date.getMonth()];
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const ms = (date.getMilliseconds() / 10).toFixed(0).padStart(2, '0');
+    return `${month} ${day} ${hours}:${minutes}:${seconds}.${ms}`;
+  };
+
+  const getRelativeTime = (ts: number) => {
+    const diff = Date.now() - ts;
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return 'just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`;
+  };
+
+  const getTimeTooltip = (ts: number) => {
+    const date = new Date(ts);
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const local = date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hour12: true });
+    const utc = date.toLocaleString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, hour12: true });
+    return `${tz}\t${local}\nUTC\t${utc}\nRelative\t${getRelativeTime(ts)}`;
+  };
     async function load() {
       try {
         const d = await getEvents({ limit: 50 });
@@ -81,10 +110,10 @@ export function EventTimeline() {
                     className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
                   />
                 </th>
-                <th style={{ width: widths.status }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header">
-                  Status
+                <th style={{ width: widths.duration }} className="py-1.5 px-2 text-[10px] font-medium text-muted-foreground border-r border-border/20 relative group/header">
+                  Duration
                   <div 
-                    onMouseDown={(e) => handleMouseDown(e, 'status')}
+                    onMouseDown={(e) => handleMouseDown(e, 'duration')}
                     className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/40 transition-colors z-20" 
                   />
                 </th>
@@ -103,12 +132,14 @@ export function EventTimeline() {
                 const Icon = EVENT_ICONS[event.type] || Clock;
                 const color = EVENT_COLORS[event.type] || 'text-muted-foreground';
                 
-                const status = payload.status || payload.decision || payload.result || '-';
+                const duration = payload.duration_ms ? `${(payload.duration_ms / 1000).toFixed(2)}s` : '-';
 
                 return (
                   <tr key={event.id} className="group hover:bg-accent/30 transition-colors border-b border-border/10 last:border-0">
-                    <td className="py-1.5 px-2 text-[10px] text-muted-foreground whitespace-nowrap align-top font-mono border-r border-border/5">
-                      {new Date(event.ts).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    <td className="py-1.5 px-2 text-[10px] text-muted-foreground whitespace-nowrap align-top font-mono border-r border-border/5 group/time relative">
+                      <span className="cursor-help" title={getTimeTooltip(event.ts)}>
+                        {formatTime(event.ts)}
+                      </span>
                     </td>
                     <td className="py-1.5 px-2 align-top border-r border-border/5">
                       <div className="flex items-center gap-1.5 overflow-hidden">
@@ -117,9 +148,9 @@ export function EventTimeline() {
                       </div>
                     </td>
                     <td className="py-1.5 px-2 align-top border-r border-border/5">
-                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-border/50 font-normal truncate max-w-full uppercase">
-                        {status}
-                      </Badge>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {duration}
+                      </span>
                     </td>
                     <td className="py-1.5 px-2 align-top relative group/cell">
                       <div className="flex items-center justify-between gap-2">
