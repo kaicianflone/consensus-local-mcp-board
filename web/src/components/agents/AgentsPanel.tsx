@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Bot, Plus, Save, X, Pencil, UserPlus, Copy, MessageSquare } from 'lucide-react';
+import { Bot, Plus, Save, X, Pencil, UserPlus, Copy, MessageSquare, User } from 'lucide-react';
 import { connectAgent, listAgents, listParticipants, createParticipant, updateParticipant, assignPolicy } from '../../lib/api';
 
 const CHAT_ADAPTERS = [
@@ -26,7 +26,9 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
   const [agents, setAgents] = useState<any[]>([]);
   const [participants, setParticipants] = useState<any[]>([]);
   const [showAddAgent, setShowAddAgent] = useState(false);
+  const [showAddHuman, setShowAddHuman] = useState(false);
   const [agentName, setAgentName] = useState('');
+  const [humanName, setHumanName] = useState('');
   const [newApiKey, setNewApiKey] = useState('');
   const [editingParticipant, setEditingParticipant] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
@@ -95,6 +97,23 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
     } catch {}
   }
 
+  async function handleAddHuman() {
+    if (!humanName.trim()) return;
+    try {
+      await createParticipant({
+        boardId,
+        subjectType: 'human',
+        subjectId: humanName.trim(),
+        role: 'voter',
+        weight: 1,
+        reputation: 1.0,
+      });
+      setHumanName('');
+      setShowAddHuman(false);
+      await refresh();
+    } catch {}
+  }
+
   async function handleAddParticipant(agentId: string) {
     try {
       await createParticipant({
@@ -143,6 +162,9 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
     } catch {}
   }
 
+  const humanParticipants = participants.filter(p => p.subject_type === 'human');
+  const agentParticipants = participants.filter(p => p.subject_type === 'agent');
+
   return (
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
@@ -150,37 +172,66 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Bot className="h-4 w-4" /> Agents & Participants
           </CardTitle>
-          <Button size="sm" variant="outline" onClick={() => setShowAddAgent(true)} className="gap-1.5 h-7 text-xs">
-            <Plus className="h-3 w-3" /> Add Agent
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShowAddAgent(true)} className="gap-1.5 h-7 text-xs">
+              <Bot className="h-3 w-3" /> +Agent
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowAddHuman(true)} className="gap-1.5 h-7 text-xs">
+              <User className="h-3 w-3" /> +Human
+            </Button>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 flex-1 overflow-y-auto">
-        <div className="text-xs text-muted-foreground">
-          {agents.length} agent{agents.length !== 1 ? 's' : ''} · {participants.length} participant{participants.length !== 1 ? 's' : ''}
+      <CardContent className="space-y-4 flex-1 overflow-y-auto">
+        {/* Humans Section */}
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <User className="h-3 w-3" /> Humans
+          </div>
+          {humanParticipants.length === 0 && <p className="text-[10px] text-muted-foreground pl-4">No human participants</p>}
+          {humanParticipants.map((p) => (
+            <ParticipantCard 
+              key={p.id} 
+              p={p} 
+              editingParticipant={editingParticipant} 
+              editDraft={editDraft} 
+              setEditDraft={setEditDraft} 
+              saveEdit={saveEdit} 
+              startEdit={startEdit} 
+              setEditingParticipant={setEditingParticipant}
+              parseMetadata={parseMetadata}
+            />
+          ))}
         </div>
 
-        {agents.map((agent: any) => {
-          const isParticipant = participants.some((p: any) => p.subject_id === agent.id);
-          return (
-            <div key={agent.id} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-md border border-border/50 bg-accent/30">
-              <div className="flex items-center gap-2 min-w-0">
-                <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                <span className="text-sm truncate">{agent.name}</span>
+        {/* Agents Section */}
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Bot className="h-3 w-3" /> Board Agents
+          </div>
+          {agents.map((agent: any) => {
+            const isParticipant = participants.some((p: any) => p.subject_id === agent.id);
+            return (
+              <div key={agent.id} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-md border border-border/50 bg-accent/30">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Bot className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  <span className="text-sm truncate">{agent.name}</span>
+                </div>
+                {!isParticipant && (
+                  <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => handleAddParticipant(agent.id)}>
+                    <UserPlus className="h-3 w-3" /> Add
+                  </Button>
+                )}
+                {isParticipant && <Badge variant="secondary" className="text-[10px]">participant</Badge>}
               </div>
-              {!isParticipant && (
-                <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => handleAddParticipant(agent.id)}>
-                  <UserPlus className="h-3 w-3" /> Add
-                </Button>
-              )}
-              {isParticipant && <Badge variant="secondary" className="text-[10px]">participant</Badge>}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
 
+        {/* Active Workflow Agents */}
         {virtualAgents.length > 0 && (
-          <div className="pt-2 space-y-2">
-            <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <Bot className="h-3 w-3" /> Active Workflow Agents
             </div>
             {virtualAgents.map((agent) => (
@@ -201,108 +252,78 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
             ))}
           </div>
         )}
-
-        {participants.length > 0 && (
-          <div className="pt-2 border-t space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">Participants</div>
-            {participants.map((p: any) => {
-              const meta = parseMetadata(p);
-              return (
-                <div key={p.id} className="rounded-md border border-border/50 px-2 py-1.5">
-                  {editingParticipant === p.id ? (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <label className="flex-1 space-y-1">
-                          <span className="text-[10px] text-muted-foreground">Weight</span>
-                          <Input className="h-7 text-xs" type="number" step="0.1" value={editDraft.weight} onChange={(e) => setEditDraft({ ...editDraft, weight: e.target.value })} />
-                        </label>
-                        <label className="flex-1 space-y-1">
-                          <span className="text-[10px] text-muted-foreground">Reputation</span>
-                          <Input className="h-7 text-xs" type="number" step="0.01" min="0" max="1" value={editDraft.reputation} onChange={(e) => setEditDraft({ ...editDraft, reputation: e.target.value })} />
-                        </label>
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[10px] text-muted-foreground">Chat Link</span>
-                        <div className="flex gap-2">
-                          <Select className="h-7 text-xs flex-1" value={editDraft.chatAdapter} onChange={(e) => setEditDraft({ ...editDraft, chatAdapter: e.target.value })}>
-                            {CHAT_ADAPTERS.map((a) => (
-                              <option key={a.value} value={a.value}>{a.label}</option>
-                            ))}
-                          </Select>
-                          <Input
-                            className="h-7 text-xs flex-1"
-                            placeholder="Chat handle / ID"
-                            value={editDraft.chatHandle}
-                            onChange={(e) => setEditDraft({ ...editDraft, chatHandle: e.target.value })}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <Button size="sm" className="h-6 text-xs gap-1" onClick={() => saveEdit(p.id)}>
-                          <Save className="h-3 w-3" /> Save
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => setEditingParticipant(null)}>
-                          <X className="h-3 w-3" /> Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{p.subject_type}</Badge>
-                        <span className="text-xs truncate">{p.subject_id}</span>
-                        <span className="text-[10px] text-muted-foreground">w={p.weight} r={p.reputation}</span>
-                        {meta.chatAdapter && meta.chatHandle && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-1 shrink-0">
-                            <MessageSquare className="h-2.5 w-2.5" />
-                            {meta.chatAdapter}: {meta.chatHandle}
-                          </Badge>
-                        )}
-                      </div>
-                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEdit(p)}>
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </CardContent>
 
       <Dialog open={showAddAgent} onOpenChange={setShowAddAgent}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Connect New Agent</DialogTitle>
-            <DialogDescription>Create a new agent with API access to the board.</DialogDescription>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Connect New Agent</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <label className="block space-y-1.5">
-              <span className="text-sm">Agent Name</span>
-              <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="merge-agent-1" />
-            </label>
+            <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="Agent Name" />
             {newApiKey && (
               <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
                 <div className="text-sm font-medium text-primary">API Key Created</div>
-                <div className="flex items-center gap-2">
-                  <code className="text-xs bg-background px-2 py-1 rounded flex-1 truncate">{newApiKey}</code>
-                  <Button size="icon" variant="outline" className="h-7 w-7 shrink-0" onClick={() => navigator.clipboard.writeText(newApiKey)}>
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">Copy this key now. It won't be shown again.</p>
+                <code className="text-xs bg-background px-2 py-1 rounded block truncate">{newApiKey}</code>
               </div>
             )}
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => { setShowAddAgent(false); setNewApiKey(''); }}>Close</Button>
-              <Button onClick={handleAddAgent} disabled={!agentName.trim()}>
-                <Plus className="h-4 w-4 mr-1.5" /> Connect
-              </Button>
+              <Button variant="outline" onClick={() => setShowAddAgent(false)}>Close</Button>
+              <Button onClick={handleAddAgent}>Connect</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddHuman} onOpenChange={setShowAddHuman}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add Human Participant</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <Input value={humanName} onChange={(e) => setHumanName(e.target.value)} placeholder="Human Name or ID" />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowAddHuman(false)}>Cancel</Button>
+              <Button onClick={handleAddHuman}>Add</Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
     </Card>
+  );
+}
+
+function ParticipantCard({ p, editingParticipant, editDraft, setEditDraft, saveEdit, startEdit, setEditingParticipant, parseMetadata }: any) {
+  const meta = parseMetadata(p);
+  return (
+    <div className="rounded-md border border-border/50 px-2 py-1.5 bg-card/50">
+      {editingParticipant === p.id ? (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Input className="h-7 text-xs flex-1" type="number" step="0.1" value={editDraft.weight} onChange={(e) => setEditDraft({ ...editDraft, weight: e.target.value })} placeholder="Weight" />
+            <Input className="h-7 text-xs flex-1" type="number" step="0.01" value={editDraft.reputation} onChange={(e) => setEditDraft({ ...editDraft, reputation: e.target.value })} placeholder="Reputation" />
+          </div>
+          <div className="flex gap-2">
+            <Select className="h-7 text-xs flex-1" value={editDraft.chatAdapter} onChange={(e) => setEditDraft({ ...editDraft, chatAdapter: e.target.value })}>
+              {CHAT_ADAPTERS.map((a) => <option key={a.value} value={a.value}>{a.label || 'Adapter'}</option>)}
+            </Select>
+            <Input className="h-7 text-xs flex-1" value={editDraft.chatHandle} onChange={(e) => setEditDraft({ ...editDraft, chatHandle: e.target.value })} placeholder="Handle" />
+          </div>
+          <div className="flex gap-1.5">
+            <Button size="sm" className="h-6 text-xs" onClick={() => saveEdit(p.id)}><Save className="h-3 w-3 mr-1" /> Save</Button>
+            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setEditingParticipant(null)}>Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <span className="text-xs font-medium truncate">{p.subject_id}</span>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap">w:{p.weight} r:{p.reputation}</span>
+            {meta.chatAdapter && (
+              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 gap-1">
+                <MessageSquare className="h-2.5 w-2.5" /> {meta.chatAdapter}
+              </Badge>
+            )}
+          </div>
+          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEdit(p)}><Pencil className="h-3 w-3" /></Button>
+        </div>
+      )}
+    </div>
   );
 }

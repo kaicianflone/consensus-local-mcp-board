@@ -141,54 +141,15 @@ export function NodeSettings({ node, onUpdate, boardId }: NodeSettingsProps) {
         )}
 
         {node.type === 'agent' && (
-          <>
-            <FieldLabel>Agent Count (N-LLM) <Input type="number" min="1" max="10" value={draft.agentCount ?? 3} onChange={(e) => set('agentCount', Number(e.target.value))} /></FieldLabel>
-            <FieldLabel>Model <Input value={draft.model || ''} onChange={(e) => set('model', e.target.value)} placeholder="gpt-4o-mini" /></FieldLabel>
-            <FieldLabel>
-              System Prompt
-              <textarea
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[60px] resize-y"
-                value={draft.systemPrompt || ''}
-                onChange={(e) => set('systemPrompt', e.target.value)}
-                placeholder="You are a strict code reviewer..."
-                rows={3}
-              />
-            </FieldLabel>
-            <FieldLabel>Persona Names <Input value={draft.personaNames || ''} onChange={(e) => set('personaNames', e.target.value)} placeholder="security-reviewer, perf-analyst, code-quality" /></FieldLabel>
-            <FieldLabel>Temperature <Input type="number" step="0.1" min="0" max="2" value={draft.temperature ?? 0} onChange={(e) => set('temperature', Number(e.target.value))} /></FieldLabel>
-            <FieldLabel>
-              Tool Access
-              <Select value={draft.toolAccess || 'restricted'} onChange={(e) => set('toolAccess', e.target.value)}>
-                <option value="restricted">Restricted</option>
-                <option value="full">Full</option>
-              </Select>
-            </FieldLabel>
-            
-            {node.type === 'agent' && (
-              <div className="mt-4 pt-4 border-t space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Reputation & Voting</div>
-                <FieldLabel>
-                  Voting Weight
-                  <Input 
-                    type="number" 
-                    step="0.1" 
-                    min="0" 
-                    max="10" 
-                    value={draft.votingWeight ?? 1.0} 
-                    onChange={(e) => set('votingWeight', Number(e.target.value))} 
-                  />
-                </FieldLabel>
-                <FieldLabel>
-                  Reputation (View Only)
-                  <Input 
-                    value={draft.reputation ?? '0.95'} 
-                    disabled 
-                    className="bg-muted/50 cursor-not-allowed"
-                  />
-                </FieldLabel>
-              </div>
-            )}
-          </>
+          <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
+            <Bot className="h-12 w-12 text-blue-400/50" />
+            <div>
+              <div className="text-sm font-medium">Agent Workflow Node</div>
+              <p className="text-xs text-muted-foreground mt-1 px-4">
+                Configuration for this agent has been moved to the <span className="font-semibold text-foreground">Agents & Participants</span> panel for centralized management.
+              </p>
+            </div>
+          </div>
         )}
 
         {node.type === 'guard' && (
