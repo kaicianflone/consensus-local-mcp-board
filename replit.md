@@ -44,7 +44,7 @@ This is a monorepo with three workspaces:
 
 - Settings page shows a "Chat Adapters" section at the top for installing platform adapters
 - Supported: Slack, Microsoft Teams, Google Chat, Discord, Telegram
-- Install/uninstall triggers `npm install/uninstall @chat-adapter/<name>` server-side
+- Install/uninstall triggers `npm install chat @chat-adapter/<name>` server-side to ensure the base `chat` package is present.
 - Adapter state tracked in credentials table (provider: 'adapter', keyName: adapter id)
 - When an adapter is installed, its credential card (tokens, webhooks) appears below
 - When uninstalled, credentials for that adapter are also removed

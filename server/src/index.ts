@@ -499,7 +499,8 @@ app.post('/api/settings/adapters/install', async (req, res) => {
     let installOutput = '';
     let installed = false;
     try {
-      installOutput = execSync(`npm install ${pkg} 2>&1`, { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
+      // Ensure 'chat' is installed first as requested by the user
+      execSync(`npm install chat ${pkg} 2>&1`, { cwd: rootDir, timeout: 60000, encoding: 'utf8' });
       installed = true;
     } catch (e: any) {
       installOutput = e?.stdout || e?.stderr || e?.message || 'Install failed';
