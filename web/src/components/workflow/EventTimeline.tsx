@@ -12,11 +12,11 @@ const EVENT_ICONS: Record<string, React.ElementType> = {
 };
 
 const EVENT_COLORS: Record<string, string> = {
-  GUARD_EVALUATED: 'text-emerald-400',
-  FINAL_DECISION: 'text-emerald-400',
-  HUMAN_DECISION: 'text-emerald-400',
-  WORKFLOW_STARTED: 'text-emerald-400',
-  WORKFLOW_STEP: 'text-emerald-400',
+  GUARD_EVALUATED: 'text-emerald-500',
+  FINAL_DECISION: 'text-emerald-500',
+  HUMAN_DECISION: 'text-emerald-500',
+  WORKFLOW_STARTED: 'text-emerald-500',
+  WORKFLOW_STEP: 'text-emerald-500',
 };
 
 export function EventTimeline() {
@@ -35,10 +35,10 @@ export function EventTimeline() {
   }, []);
 
   return (
-    <Card className="h-full flex flex-col overflow-hidden border-border/50 bg-card/50">
-      <CardHeader className="py-2 px-3 border-b border-border/50 bg-muted/30">
-        <CardTitle className="text-[11px] font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground">
-          <Clock className="h-3.5 w-3.5" /> Event Log
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Clock className="h-4 w-4" /> Event Log
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
