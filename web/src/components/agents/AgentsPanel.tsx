@@ -6,7 +6,7 @@ import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Bot, Plus, Save, X, Pencil, UserPlus, Copy, MessageSquare, User } from 'lucide-react';
-import { connectAgent, listAgents, listParticipants, createParticipant, updateParticipant, assignPolicy } from '../../lib/api';
+import { connectAgent, listAgents, listParticipants, createParticipant, updateParticipant, assignPolicy, deleteParticipant } from '../../lib/api';
 
 const CHAT_ADAPTERS = [
   { value: '', label: 'None' },
@@ -162,6 +162,13 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
     } catch {}
   }
 
+  async function handleDeleteParticipant(id: string) {
+    try {
+      await deleteParticipant(id);
+      await refresh();
+    } catch {}
+  }
+
   const humanParticipants = participants.filter(p => p.subject_type === 'human');
   const agentParticipants = participants.filter(p => p.subject_type === 'agent');
 
@@ -297,6 +304,7 @@ function ParticipantCard({ p, editingParticipant, editDraft, setEditDraft, saveE
           </div>
           <div className="flex gap-1.5">
             <Button size="sm" className="h-6 text-xs" onClick={() => saveEdit(p.id)}><Save className="h-3 w-3 mr-1" /> Save</Button>
+            <Button size="sm" variant="destructive" className="h-6 text-xs" onClick={() => handleDeleteParticipant(p.id)}><Trash2 className="h-3 w-3 mr-1" /> Delete</Button>
             <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setEditingParticipant(null)}>Cancel</Button>
           </div>
         </div>

@@ -189,6 +189,11 @@ export function updateParticipant(id: string, patch: { reputation?: number; weig
   return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
 }
 
+export function deleteParticipant(id: string) {
+  const result = db.prepare('DELETE FROM participants WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
 export function upsertPolicyAssignment(input: { boardId: string; policyId: string; participants: string[]; weightingMode: string; quorum: number }) {
   const ts = Date.now();
   const existing = db.prepare('SELECT id FROM policy_assignments WHERE board_id=? AND policy_id=?').get(input.boardId, input.policyId) as any;

@@ -211,6 +211,16 @@ app.patch('/api/participants/:id', (req, res) => {
   }
 });
 
+app.delete('/api/participants/:id', (req, res) => {
+  try {
+    const success = deleteParticipant(req.params.id);
+    if (!success) return res.status(404).json(err('PARTICIPANT_NOT_FOUND', 'Participant not found'));
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json(err('DELETE_FAILED', 'Failed to delete participant', e?.message));
+  }
+});
+
 app.post('/api/policies/assign', (req, res) => {
   try {
     const body = z.object({ boardId: z.string().min(1), policyId: z.string().min(1), participants: z.array(z.string()), weightingMode: z.enum(['static', 'reputation', 'hybrid']).default('hybrid'), quorum: z.number().min(0).max(1) }).parse(req.body || {});
