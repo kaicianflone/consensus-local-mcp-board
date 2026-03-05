@@ -14,6 +14,14 @@ export async function getEvents(params: Record<string, string | number | undefin
   Object.entries(params).forEach(([k, v]) => { if (v !== undefined) q.set(k, String(v)); });
   return fetch(`${MCP_API}/events?${q.toString()}`).then(j);
 }
+export async function getRunIds(): Promise<{ runIds: string[] }> {
+  return fetch(`${MCP_API}/events/run-ids`).then(j);
+}
+export async function clearEvents(params: Record<string, string | undefined> = {}) {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined) q.set(k, String(v)); });
+  return fetch(`${MCP_API}/events?${q.toString()}`, { method: 'DELETE' }).then(j);
+}
 export async function evalAction(input: any) {
   return fetch(`${MCP_API}/evaluate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }).then(j);
 }

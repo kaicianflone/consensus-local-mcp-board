@@ -12,6 +12,11 @@ export function registerHumanDecision(_runId: string, _decision: HumanDecision) 
   return;
 }
 
+/**
+ * Durable guard-evaluate workflow.
+ * The "use workflow" directive makes this a recoverable, observable workflow
+ * via the Vercel Workflow SDK.
+ */
 export async function guardEvaluateWorkflow(raw: unknown) {
   'use workflow';
   const input = GuardEvaluateRequestSchema.parse(raw);
@@ -19,22 +24,75 @@ export async function guardEvaluateWorkflow(raw: unknown) {
 }
 
 export async function executeGuardEvaluate(input: GuardEvaluateRequest) {
+  const runId = await initGuardRun(input);
+  const result = await runConsensusEvaluation(runId, input);
+  const guardResult = await finalizeGuardResult(runId, input.boardId, result);
+  return guardResult;
+}
+
+/**
+ * Step: initialize or reuse a run record in the DB.
+ */
+async function initGuardRun(input: GuardEvaluateRequest): Promise<string> {
+  'use step';
   const existingRun = input.runId ? getRun(input.runId) : null;
   const runId = existingRun
-    ? input.runId
+    ? input.runId!
     : createRun(input.boardId, { actionType: input.guardType, externalRunId: input.runId ?? null }, input.runId).id;
 
   appendEvent(input.boardId, runId, 'PROPOSED_ACTION', { type: input.guardType, payload: input.payload, policy: input.policy });
+  return runId;
+}
 
-  const result = evaluateViaConsensusTools({
+/**
+ * Step: invoke the consensus-tools evaluation engine.
+ */
+async function runConsensusEvaluation(runId: string, input: GuardEvaluateRequest) {
+  'use step';
+  return evaluateViaConsensusTools({
     runId,
     boardId: input.boardId,
     guardType: input.guardType,
     payload: (input.payload || {}) as Record<string, unknown>,
     policyPack: input.policy?.policyId
   });
+}
 
-  const audit = appendEvent(input.boardId, runId, 'FINAL_DECISION', {
+/**
+ * Step: persist the final decision event and update the run status.
+ */
+async function finalizeGuardResult(runId: string, boardId: string, result: any) {
+  'use step';
+
+  // Individual agent verdict from consensus evaluation
+  appendEvent(boardId, runId, 'AGENT_VERDICT', {
+    evaluator: result.meta?.engine || 'consensus-tools',
+    verdict: result.decision,
+    risk: result.risk_score,
+    reason: result.reason,
+    guardType: result.guard_type,
+  });
+
+  // Final risk score
+  appendEvent(boardId, runId, 'RISK_SCORE', {
+    risk_score: result.risk_score,
+    decision: result.decision,
+    guardType: result.guard_type,
+    engine: result.meta?.engine || 'consensus-tools',
+  });
+
+  // Final consensus quorum score
+  const quorumScore = result.decision === 'ALLOW' ? 1.0
+    : result.decision === 'REQUIRE_HUMAN' ? 0.0
+    : result.meta?.quorum_score ?? 0.5;
+  appendEvent(boardId, runId, 'CONSENSUS_QUORUM', {
+    quorum_score: quorumScore,
+    decision: result.decision,
+    engine: result.meta?.engine || 'consensus-tools',
+    consensus_meta: result.meta || null,
+  });
+
+  const audit = appendEvent(boardId, runId, 'FINAL_DECISION', {
     decision: result.decision,
     reason: result.reason,
     risk_score: result.risk_score,

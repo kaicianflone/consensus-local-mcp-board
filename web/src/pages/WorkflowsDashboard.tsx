@@ -144,7 +144,9 @@ export default function WorkflowsDashboard() {
             children: [...agentChildren, ...hitlChildren]
           } 
         };
-        return [...nextNodes, groupNode];
+        // Agents run first (produce verdicts), guard resolves after
+        const withoutGuard = nextNodes.slice(0, -1);
+        return [...withoutGuard, groupNode, newNode];
       }
       
       return nextNodes;

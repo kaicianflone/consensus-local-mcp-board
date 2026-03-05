@@ -29,17 +29,17 @@ export type WorkflowNode = {
   config: Record<string, any>;
 };
 
-function NodeContent({ node, isSelected, onSelect, onDelete, compact, width }: { node: WorkflowNode; isSelected: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void; compact?: boolean; width?: number }) {
+function NodeContent({ node, isSelected, onSelect, onDelete, compact }: { node: WorkflowNode; isSelected: boolean; onSelect: (id: string) => void; onDelete: (id: string) => void; compact?: boolean }) {
   const paletteItem = PALETTE.find((p) => p.type === node.type);
   const Icon = paletteItem?.icon;
 
-  const showLabel = !compact || (node.type === 'agent' && width && width > 80);
+  const showLabel = true;
 
   return (
     <div
       className={cn(
         'group relative flex transition-all cursor-pointer rounded-lg border px-3',
-        compact ? 'py-2 flex-1 min-w-0 flex-col items-center justify-center text-center' : 'flex-row items-center gap-2 py-2.5',
+        compact ? 'py-2 min-w-0 h-full flex-col items-center justify-center text-center' : 'flex-row items-center gap-2 py-2.5',
         NODE_COLORS[node.type] || 'border-border/50 bg-card',
         isSelected && 'ring-1 ring-primary',
       )}
@@ -86,19 +86,6 @@ interface SortableNodeProps {
 
 function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete, hideDelete, hideHandle }: SortableNodeProps & { hideDelete?: boolean; hideHandle?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id });
-  const [containerWidth, setContainerWidth] = React.useState(0);
-  const resizeRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!resizeRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
-      }
-    });
-    observer.observe(resizeRef.current);
-    return () => observer.disconnect();
-  }, []);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -107,15 +94,11 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
 
   if (node.type === 'group') {
     const children: WorkflowNode[] = Array.isArray(node.config?.children) ? node.config.children : [];
-    const childWidth = children.length > 0 ? (containerWidth - 16 - (children.length - 1) * 8) / children.length : 0;
 
     return (
       <>
         <div
-          ref={(node) => {
-            setNodeRef(node);
-            (resizeRef as any).current = node;
-          }}
+          ref={setNodeRef}
           style={style}
           className={cn(
             'rounded-lg border-2 border-dashed transition-all',
@@ -151,7 +134,7 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
               </Button>
             )}
           </div>
-          <div className="flex gap-2 p-2">
+          <div className="grid grid-cols-3 gap-2 p-2 items-stretch">
             {children.map((child) => (
               <NodeContent
                 key={child.id}
@@ -160,11 +143,10 @@ function SortableNode({ node, isSelected, selectedId, isLast, onSelect, onDelete
                 onSelect={onSelect}
                 onDelete={onDelete}
                 compact
-                width={childWidth}
               />
             ))}
             {children.length === 0 && (
-              <div className="flex-1 flex items-center justify-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
+              <div className="col-span-3 flex items-center justify-center py-4 text-xs text-muted-foreground border border-dashed rounded-md">
                 No children — configure in settings
               </div>
             )}
@@ -251,8 +233,8 @@ function FirewallHeader({ node, onDelete }: { node: WorkflowNode; onDelete: (id:
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <Shield className="h-4 w-4 text-emerald-500" />
-        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500/80">Decision Firewall</span>
+        <Shield className="h-5 w-5 text-emerald-400 drop-shadow-[0_0_4px_rgba(16,185,129,0.5)]" />
+        <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-400">Decision Firewall</span>
       </div>
       <Button
         variant="ghost"
@@ -298,12 +280,12 @@ export function NodeCanvas({ nodes, selectedId, onSelect, onDelete, onReorder, o
     const node = nodes[i];
     const nextNode = nodes[i + 1];
 
-    if (node.type === 'guard' && nextNode?.type === 'group' && nextNode.config?.linkedGuardId === node.id) {
-      // It's a firewall pair
+    if (node.type === 'group' && nextNode?.type === 'guard' && node.config?.linkedGuardId === nextNode.id) {
+      // It's a firewall pair: parallel agents → guard
       renderedItems.push(
-        <React.Fragment key={`firewall-${node.id}`}>
-          <div className="p-3 border-2 border-emerald-500/20 bg-emerald-500/[0.02] rounded-xl space-y-2 relative group/firewall">
-            <FirewallHeader node={node} onDelete={(id) => { onDelete(node.id); onDelete(nextNode.id); }} />
+        <React.Fragment key={`firewall-${nextNode.id}`}>
+          <div className="p-3.5 border-[3px] border-emerald-500/40 bg-emerald-500/[0.06] rounded-xl space-y-2 relative group/firewall shadow-[0_0_12px_-3px_rgba(16,185,129,0.25)]">
+            <FirewallHeader node={nextNode} onDelete={(id) => { onDelete(node.id); onDelete(nextNode.id); }} />
             <SortableNode
               node={node}
               isSelected={selectedId === node.id}

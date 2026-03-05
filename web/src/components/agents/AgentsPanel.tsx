@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
-import { Bot, Save, Pencil, MessageSquare, User, Trash2, Cpu, Globe, Key, Thermometer } from 'lucide-react';
+import { Bot, Save, Pencil, MessageSquare, User, Trash2, Cpu, Globe, Key, Thermometer, TrendingUp } from 'lucide-react';
 import { connectAgent, listAgents, listParticipants, createParticipant, updateParticipant, assignPolicy, deleteParticipant } from '../../lib/api';
 
 const CHAT_ADAPTERS = [
@@ -79,7 +79,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
         subjectId: internalForm.name.trim(),
         role: 'voter',
         weight: 1,
-        reputation: 0.6,
+        reputation: 100,
         metadata: {
           agentType: 'internal',
           model: internalForm.model,
@@ -108,7 +108,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
         subjectId: externalForm.name.trim(),
         role: 'voter',
         weight: 1,
-        reputation: 0.6,
+        reputation: 100,
         metadata: {
           agentType: 'external',
           agentRegistryId: r.agent?.id || '',
@@ -130,7 +130,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
         subjectId: humanName.trim(),
         role: 'voter',
         weight: 1,
-        reputation: 1.0,
+        reputation: 100,
       });
       setHumanName('');
       setShowAddHuman(false);
@@ -411,12 +411,17 @@ function ParticipantCard({ p, editingParticipant, editDraft, setEditDraft, saveE
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Weight</label>
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Weight (override)</label>
               <Input className="h-7 text-xs" type="number" step="0.1" value={editDraft.weight} onChange={(e) => setEditDraft({ ...editDraft, weight: e.target.value })} />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Reputation</label>
-              <Input className="h-7 text-xs" type="number" step="0.01" min="0" max="1" value={editDraft.reputation} onChange={(e) => setEditDraft({ ...editDraft, reputation: e.target.value })} />
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                Reputation <TrendingUp className="h-2.5 w-2.5" />
+              </label>
+              <div className="h-7 flex items-center px-2 rounded-md border border-border bg-muted/50 text-xs text-muted-foreground tabular-nums">
+                {editDraft.reputation}
+                <span className="ml-auto text-[9px] opacity-60">ledger</span>
+              </div>
             </div>
           </div>
 
@@ -471,7 +476,9 @@ function ParticipantCard({ p, editingParticipant, editDraft, setEditDraft, saveE
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             <span className="text-xs font-medium truncate">{p.subject_id}</span>
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">w:{p.weight} r:{p.reputation}</span>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap" title={`Weight: ${p.weight} (override) · Reputation: ${p.reputation} (ledger) · Effective: ${(p.weight * p.reputation / 100).toFixed(2)}`}>
+              w:{p.weight} r:{p.reputation}
+            </span>
             {isInternal && (
               <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 gap-0.5">
                 <Cpu className="h-2.5 w-2.5" /> {meta.model || 'ai-sdk'}

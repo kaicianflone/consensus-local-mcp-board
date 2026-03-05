@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS participants(
   subject_id TEXT NOT NULL,
   role TEXT NOT NULL,
   weight REAL NOT NULL,
-  reputation REAL NOT NULL,
+  reputation INTEGER NOT NULL DEFAULT 100,
   status TEXT NOT NULL,
   metadata_json TEXT NOT NULL,
   created_at INTEGER NOT NULL,

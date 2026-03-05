@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, db, deleteParticipant, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment, type WorkflowRecord } from './db/store.js';
+import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, db, deleteParticipant, deleteEvents, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listDistinctRunIds, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment, type WorkflowRecord } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
@@ -9,8 +9,67 @@ import { humanApprovePost } from './api/human.approve.post.js';
 import { resumeWorkflow, runWorkflow } from './workflows/runner.js';
 import { upsertCredential, listCredentials, deleteCredential, getProviderStatus, getCredential } from './db/credentials.js';
 import crypto from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+
+// ── consensus-tools bootstrap ──
+
+function findConsensusBin(): string | null {
+  if (process.env.CONSENSUS_TOOLS_BIN) return process.env.CONSENSUS_TOOLS_BIN;
+  try {
+    const found = execSync('which consensus-tools', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    if (found && existsSync(found)) return found;
+  } catch { /* not on PATH */ }
+  const candidates = [
+    '/opt/homebrew/lib/node_modules/@consensus-tools/consensus-tools/bin/consensus-tools.js',
+    '/usr/local/lib/node_modules/@consensus-tools/consensus-tools/bin/consensus-tools.js',
+    `${process.env.HOME}/.openclaw/workspace/repos/consensus-tools/bin/consensus-tools.js`,
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
+function runConsensusCli(bin: string, args: string[]): any {
+  const cmd = bin.endsWith('.js') ? 'node' : bin;
+  const cmdArgs = bin.endsWith('.js') ? [bin, ...args] : args;
+  const raw = execFileSync(cmd, cmdArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return null;
+  try { return JSON.parse(trimmed); } catch { return { raw: trimmed }; }
+}
+
+function bootstrapConsensusTools() {
+  const bin = findConsensusBin();
+  if (!bin) {
+    console.log('[bootstrap] consensus-tools CLI not found — skipping auto-init');
+    return;
+  }
+
+  try {
+    const boardMode = runConsensusCli(bin, ['config', 'get', 'board_mode']);
+    // boardMode is a JSON value: "local", "remote", or null
+    const mode = typeof boardMode === 'string' ? boardMode : null;
+
+    if (!mode || mode === 'null') {
+      // Not initialized → set up with local defaults pointing at our server
+      console.log('[bootstrap] consensus-tools not configured — running auto-init with local defaults...');
+      runConsensusCli(bin, ['board', 'use', 'local']);
+      runConsensusCli(bin, ['config', 'set', 'board_mode', 'local']);
+      runConsensusCli(bin, ['config', 'set', 'api_url', 'http://127.0.0.1:4010']);
+      console.log('[bootstrap] consensus-tools initialized: board_mode=local, api_url=http://127.0.0.1:4010');
+    } else {
+      // Already initialized → create a new board for this session
+      console.log(`[bootstrap] consensus-tools already configured (mode=${mode}) — creating startup board...`);
+      const board = createBoard(`session-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}`);
+      console.log(`[bootstrap] Created board: ${board.id} (${board.name})`);
+    }
+  } catch (e: any) {
+    console.warn(`[bootstrap] consensus-tools bootstrap failed (non-fatal): ${e?.message || e}`);
+  }
+}
 
 const app = express();
 const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
@@ -19,12 +78,12 @@ const TEMPLATE_1 = {
   boardId: 'workflow-system',
   nodes: [
     { id: 'trigger-github-pr', type: 'trigger', label: 'GitHub PR Opened', config: { source: 'github.pr.opened', repo: '', branch: 'main' } },
-    { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, numberOfReviewers: 3, policyPack: 'merge-default' } },
     { id: 'parallel-review', type: 'group', label: 'Parallel Review', config: { linkedGuardId: 'guard-code-merge', children: [
       { id: 'agent-1', type: 'agent', label: 'Security Reviewer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'security-reviewer', model: 'gpt-4o-mini' } },
       { id: 'agent-2', type: 'agent', label: 'Performance Analyst', config: { agentCount: 1, personaMode: 'manual', personaNames: 'performance-analyst', model: 'gpt-4o-mini' } },
       { id: 'agent-3', type: 'agent', label: 'Code Quality', config: { agentCount: 1, personaMode: 'manual', personaNames: 'code-quality-reviewer', model: 'gpt-4o-mini' } }
     ] } },
+    { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, numberOfReviewers: 3, policyPack: 'merge-default' } },
     { id: 'human-approval-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
     { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHumanApprovalYes: true, idempotencyKeyFrom: 'pr.sha' } }
   ]
@@ -238,6 +297,10 @@ app.get('/api/workflows', (_req, res) => {
   const existing = listWorkflows();
   if (!existing.length) {
     createWorkflow('Template 1 - GitHub PR Merge Guard', TEMPLATE_1 as any);
+  } else {
+    // Keep Template 1 definition in sync with code
+    const tmpl = existing.find((w: any) => w.name === 'Template 1 - GitHub PR Merge Guard');
+    if (tmpl) updateWorkflow((tmpl as any).id, { definition: TEMPLATE_1 as any });
   }
   res.json({ workflows: listWorkflows() });
 });
@@ -309,6 +372,25 @@ app.get('/api/mcp/events', (req, res) => {
     res.json({ events: listEvents({ ...q, limit: q.limit || 100 }) });
   } catch (e: any) {
     res.status(400).json(err('INVALID_QUERY', 'Invalid query params', e?.message));
+  }
+});
+
+app.get('/api/mcp/events/run-ids', (_req, res) => {
+  try {
+    const rows = listDistinctRunIds(100);
+    res.json({ runIds: rows.map(r => r.run_id) });
+  } catch (e: any) {
+    res.status(500).json(err('LIST_RUN_IDS_FAILED', 'Failed to list run IDs', e?.message));
+  }
+});
+
+app.delete('/api/mcp/events', (req, res) => {
+  try {
+    const q = z.object({ boardId: z.string().optional(), runId: z.string().optional() }).parse(req.query);
+    const result = deleteEvents(q);
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    res.status(400).json(err('DELETE_EVENTS_FAILED', 'Failed to delete events', e?.message));
   }
 });
 
@@ -691,4 +773,229 @@ app.post('/api/webhooks/github', async (req, res) => {
   }
 });
 
-app.listen(4010, '127.0.0.1', () => console.log('local-mcp-board server on http://127.0.0.1:4010'));
+// ── Adapter-Specific Inbound Webhooks ──
+// These endpoints receive replies from chat surfaces and route them to human.approve.
+
+// Slack Events API handler
+app.post('/api/webhooks/slack/events', async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    // Slack URL verification challenge
+    if (body.type === 'url_verification') {
+      return res.json({ challenge: body.challenge });
+    }
+
+    if (body.type !== 'event_callback') {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
+
+    const event = body.event || {};
+    // Only handle message events that are replies (not from bots)
+    if (event.type !== 'message' || event.bot_id || event.subtype) {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
+
+    const text = String(event.text || '').trim();
+    const userId = event.user || '';
+
+    // Extract runId from message metadata or thread context
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    // Also check message metadata if available
+    if (!runId && event.metadata?.event_payload?.runId) {
+      runId = event.metadata.event_payload.runId;
+    }
+
+    // Try to find a pending approval matching this user
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'slack' && t.handle === userId)
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Could not determine runId' });
+    }
+
+    // Clean reply text: remove any "run:xxx" prefix
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `slack:${userId}`,
+      idempotencyKey: `slack:${event.event_ts || Date.now()}`,
+      boardId: body.event?.metadata?.event_payload?.boardId
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:slack]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Teams Bot Framework activity handler
+app.post('/api/webhooks/teams/activity', async (req, res) => {
+  try {
+    const activity = req.body || {};
+    if (activity.type !== 'message') {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
+
+    const text = String(activity.text || '').replace(/<at>[^<]*<\/at>/g, '').trim();
+    const userId = activity.from?.id || activity.from?.name || 'teams-user';
+
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    // Try to find pending approval for this user
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'teams' && (t.handle === userId || t.subjectId === activity.from?.name))
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Could not determine runId' });
+    }
+
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `teams:${userId}`,
+      idempotencyKey: `teams:${activity.id || Date.now()}`,
+      boardId: activity.channelData?.consensus?.boardId
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:teams]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Discord webhook interactions handler
+app.post('/api/webhooks/discord/interactions', async (req, res) => {
+  try {
+    const body = req.body || {};
+    // Discord ping verification
+    if (body.type === 1) return res.json({ type: 1 });
+
+    const text = String(body.data?.options?.[0]?.value || body.content || '').trim();
+    const userId = body.member?.user?.id || body.user?.id || 'discord-user';
+
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'discord' && t.handle === userId)
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) return res.status(200).json({ ok: true, skipped: true });
+
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `discord:${userId}`,
+      idempotencyKey: `discord:${body.id || Date.now()}`
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:discord]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Telegram webhook handler
+app.post('/api/webhooks/telegram', async (req, res) => {
+  try {
+    const update = req.body || {};
+    const message = update.message || update.edited_message;
+    if (!message?.text) return res.status(200).json({ ok: true, skipped: true });
+
+    const text = String(message.text).trim();
+    const userId = String(message.from?.id || 'telegram-user');
+
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'telegram' && t.handle === userId)
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) return res.status(200).json({ ok: true, skipped: true });
+
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `telegram:${userId}`,
+      idempotencyKey: `telegram:${update.update_id || Date.now()}`
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:telegram]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Generic adapter inbound (for custom/gchat adapters)
+app.post('/api/webhooks/chat/:adapter', async (req, res) => {
+  try {
+    const adapter = req.params.adapter;
+    const body = z.object({
+      runId: z.string(),
+      replyText: z.string(),
+      approver: z.string().default('human'),
+      idempotencyKey: z.string().optional(),
+      boardId: z.string().optional()
+    }).parse(req.body ?? {});
+
+    const out = await humanApprovePost({
+      runId: body.runId,
+      replyText: body.replyText,
+      approver: `${adapter}:${body.approver}`,
+      idempotencyKey: body.idempotencyKey ?? `${adapter}:${body.runId}:${Date.now()}`,
+      boardId: body.boardId
+    });
+    res.json(out);
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'CHAT_REPLY_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to process chat adapter reply', e?.message));
+  }
+});
+
+// ── Pending Approvals API ──
+
+app.get('/api/hitl/pending', (_req, res) => {
+  try {
+    const { listPendingApprovals } = require('./engine/hitl-tracker.js');
+    res.json({ pending: listPendingApprovals() });
+  } catch (e: any) {
+    res.status(500).json(err('HITL_LIST_FAILED', 'Failed to list pending approvals', e?.message));
+  }
+});
+
+app.listen(4010, '127.0.0.1', () => {
+  console.log('local-mcp-board server on http://127.0.0.1:4010');
+  bootstrapConsensusTools();
+});

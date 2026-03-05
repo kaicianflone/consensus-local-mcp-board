@@ -1,0 +1,28 @@
+{
+  "activeBoard": "local",
+  "boards": {
+    "local": {
+      "type": "local",
+      "root": "~/.openclaw/workplace/consensus-board",
+      "jobsPath": "jobs",
+      "ledgerPath": "ledger.json"
+    },
+    "remote": {
+      "type": "remote",
+      "url": "https://api.consensus.tools",
+      "boardId": "board_all",
+      "auth": {
+        "type": "apiKey",
+        "apiKeyEnv": "CONSENSUS_API_KEY"
+      }
+    }
+  },
+  "defaults": {
+    "policy": "HIGHEST_CONFIDENCE_SINGLE",
+    "reward": 8,
+    "stake": 4,
+    "leaseSeconds": 180
+  },
+  "board_mode": "local",
+  "api_url": "http://127.0.0.1:4010"
+}

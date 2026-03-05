@@ -47,13 +47,73 @@ export const toolRegistry = {
     run: (input: unknown) => {
       const guardType = z.object({ guardType: z.string().optional() }).parse(input).guardType;
       const matrix: Record<string, any> = {
-        send_email: { quorum: 0.7, hitlRequiredAboveRisk: 0.75, options: { tone: ['neutral', 'formal'], externalRecipients: ['allow', 'require_hitl'] } },
-        code_merge: { quorum: 0.7, hitlRequiredAboveRisk: 0.7, options: { strictness: ['balanced', 'strict'], requireCi: [true, false] } },
-        publish: { quorum: 0.7, hitlRequiredAboveRisk: 0.7, options: { channel: ['blog', 'social'], legalReview: [true, false] } },
-        support_reply: { quorum: 0.7, hitlRequiredAboveRisk: 0.7, options: { customerTier: ['free', 'pro', 'enterprise'] } },
-        agent_action: { quorum: 0.7, hitlRequiredAboveRisk: 0.7, options: { irreversible: [true, false] } },
-        deployment: { quorum: 0.7, hitlRequiredAboveRisk: 0.8, options: { env: ['dev', 'staging', 'prod'], rollout: ['canary', 'all-at-once'] } },
-        permission_escalation: { quorum: 0.75, hitlRequiredAboveRisk: 0.75, options: { environment: ['dev', 'staging', 'prod'], breakGlass: [true, false] } }
+        send_email: {
+          quorum: 0.7, hitlRequiredAboveRisk: 0.75,
+          options: { tone: ['neutral', 'formal'], externalRecipients: ['allow', 'require_hitl'] },
+          guardSettings: {
+            recipientAllowlist: { type: 'string', description: 'Comma-separated allowed email domains', default: '' },
+            recipientBlocklist: { type: 'string', description: 'Comma-separated blocked email domains', default: '' },
+            attachmentPolicy: { type: 'enum', values: ['allow', 'warn', 'block'], default: 'warn', description: 'How to handle email attachments' },
+            secretsScanning: { type: 'boolean', default: true, description: 'Scan body for API keys, tokens, secrets' },
+          }
+        },
+        code_merge: {
+          quorum: 0.7, hitlRequiredAboveRisk: 0.7,
+          options: { strictness: ['balanced', 'strict'], requireCi: [true, false] },
+          guardSettings: {
+            sensitiveFilePatterns: { type: 'string', description: 'Comma-separated file path patterns triggering elevated risk', default: 'auth,security,permission,crypto' },
+            requiredReviewers: { type: 'number', min: 0, max: 10, default: 1, description: 'Minimum human code reviewers' },
+            protectedBranches: { type: 'string', description: 'Comma-separated branch patterns requiring stricter review', default: 'main' },
+            ciRequired: { type: 'boolean', default: true, description: 'Require CI checks to pass' },
+          }
+        },
+        publish: {
+          quorum: 0.7, hitlRequiredAboveRisk: 0.7,
+          options: { channel: ['blog', 'social'], legalReview: [true, false] },
+          guardSettings: {
+            profanityFilter: { type: 'boolean', default: true, description: 'Scan for profanity' },
+            piiDetection: { type: 'boolean', default: true, description: 'Detect PII patterns (SSN, etc.)' },
+            blockedWords: { type: 'string', description: 'Comma-separated custom blocked words', default: '' },
+          }
+        },
+        support_reply: {
+          quorum: 0.7, hitlRequiredAboveRisk: 0.7,
+          options: { customerTier: ['free', 'pro', 'enterprise'] },
+          guardSettings: {
+            escalationKeywords: { type: 'string', description: 'Comma-separated keywords triggering escalation', default: 'refund,lawsuit,legal action' },
+            autoEscalate: { type: 'boolean', default: true, description: 'Auto-escalate to human on keyword match' },
+            customerTier: { type: 'enum', values: ['all', 'free', 'pro', 'enterprise'], default: 'all', description: 'Customer tier for risk weighting' },
+          }
+        },
+        agent_action: {
+          quorum: 0.7, hitlRequiredAboveRisk: 0.7,
+          options: { irreversible: [true, false] },
+          guardSettings: {
+            irreversibleDefault: { type: 'boolean', default: false, description: 'Treat actions as irreversible by default' },
+            toolAllowlist: { type: 'string', description: 'Comma-separated MCP tool names allowed without review', default: '' },
+            toolBlocklist: { type: 'string', description: 'Comma-separated MCP tool names always requiring review', default: '' },
+          }
+        },
+        deployment: {
+          quorum: 0.7, hitlRequiredAboveRisk: 0.8,
+          options: { env: ['dev', 'staging', 'prod'], rollout: ['canary', 'all-at-once'] },
+          guardSettings: {
+            deployEnv: { type: 'enum', values: ['dev', 'staging', 'prod'], default: 'prod', description: 'Target deployment environment' },
+            rolloutStrategy: { type: 'enum', values: ['canary', 'blue-green', 'rolling', 'all-at-once'], default: 'all-at-once', description: 'Rollout strategy' },
+            requireProdApproval: { type: 'boolean', default: true, description: 'Require human approval for prod deploys' },
+            rollbackEnabled: { type: 'boolean', default: true, description: 'Enable automatic rollback on failure' },
+          }
+        },
+        permission_escalation: {
+          quorum: 0.75, hitlRequiredAboveRisk: 0.75,
+          options: { environment: ['dev', 'staging', 'prod'], breakGlass: [true, false] },
+          guardSettings: {
+            breakGlassDefault: { type: 'boolean', default: false, description: 'Treat escalations as break-glass by default' },
+            maxEscalationLevel: { type: 'number', min: 1, max: 5, default: 3, description: 'Maximum escalation levels' },
+            requireMfa: { type: 'boolean', default: false, description: 'Require MFA for approval' },
+            permEnv: { type: 'enum', values: ['dev', 'staging', 'prod'], default: 'prod', description: 'Target environment' },
+          }
+        }
       };
       return guardType ? { guardType, policy: matrix[guardType] ?? null } : { guards: matrix };
     }

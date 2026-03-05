@@ -11,12 +11,23 @@ export interface VoteTally {
   voterCount: number;
 }
 
+export type WeightingMode = 'static' | 'reputation' | 'hybrid';
+
 export interface WeightedVote extends GuardVote {
   weight: number;
   confidence: number;
+  reputation?: number; // 0-100 ledger-derived score
 }
 
-export function tallyVotes(votes: WeightedVote[]): VoteTally {
+export function computeEffectiveWeight(weight: number, reputation: number, mode: WeightingMode = 'hybrid'): number {
+  switch (mode) {
+    case 'static':     return weight;
+    case 'reputation': return reputation / 100;
+    case 'hybrid':     return weight * (reputation / 100);
+  }
+}
+
+export function tallyVotes(votes: WeightedVote[], weightingMode: WeightingMode = 'hybrid'): VoteTally {
   const tally: VoteTally = {
     yes: 0, no: 0, rewrite: 0,
     totalWeight: 0,
@@ -25,7 +36,8 @@ export function tallyVotes(votes: WeightedVote[]): VoteTally {
   };
 
   for (const v of votes) {
-    const effectiveWeight = v.weight * v.confidence;
+    const baseWeight = computeEffectiveWeight(v.weight, v.reputation ?? 100, weightingMode);
+    const effectiveWeight = baseWeight * v.confidence;
     tally.totalWeight += effectiveWeight;
 
     if (v.vote === 'YES') {
@@ -50,39 +62,37 @@ export function reachesQuorum(tally: VoteTally, quorum: number): boolean {
   return weightedParticipation >= quorum && participationRatio > 0;
 }
 
-export function computeDecision(votes: WeightedVote[], policy: PolicyMetadata): {
+export function computeDecision(votes: WeightedVote[], policy: PolicyMetadata, weightingMode: WeightingMode = 'hybrid'): {
   decision: Decision;
   tally: VoteTally;
   quorumMet: boolean;
   weightedYesRatio: number;
+  combinedRisk: number;
 } {
-  const tally = tallyVotes(votes);
-  const quorumMet = reachesQuorum(tally, policy.quorum);
+  const tally = tallyVotes(votes, weightingMode);
 
-  if (!quorumMet) {
-    return {
-      decision: 'REQUIRE_HUMAN',
-      tally,
-      quorumMet,
-      weightedYesRatio: 0
-    };
+  let riskNum = 0;
+  let riskDen = 0;
+  for (const v of votes) {
+    const ew = computeEffectiveWeight(v.weight, v.reputation ?? 100, weightingMode);
+    riskNum += v.risk * ew;
+    riskDen += ew;
   }
+  const combinedRisk = riskDen > 0 ? riskNum / riskDen : 0.5;
 
   const weightedYesRatio = tally.totalWeight > 0 ? tally.weightedYes / tally.totalWeight : 0;
-  const weightedNoRatio = tally.totalWeight > 0 ? tally.weightedNo / tally.totalWeight : 0;
+  const quorumMet = reachesQuorum(tally, policy.quorum);
 
-  if (weightedNoRatio > (1 - policy.riskThreshold)) {
-    return { decision: 'BLOCK', tally, quorumMet, weightedYesRatio };
+  // Step 1: Combined risk exceeds threshold → BLOCK
+  if (combinedRisk > policy.riskThreshold) {
+    return { decision: 'BLOCK', tally, quorumMet, weightedYesRatio, combinedRisk };
   }
 
-  const weightedRewriteRatio = tally.totalWeight > 0 ? tally.weightedRewrite / tally.totalWeight : 0;
-  if (weightedRewriteRatio > (1 - policy.riskThreshold)) {
-    return { decision: 'REWRITE', tally, quorumMet, weightedYesRatio };
+  // Step 2: Quorum not met (weighted YES ratio < quorum) → REQUIRE_HUMAN
+  if (!quorumMet || weightedYesRatio < policy.quorum) {
+    return { decision: 'REQUIRE_HUMAN', tally, quorumMet, weightedYesRatio, combinedRisk };
   }
 
-  if (weightedYesRatio >= policy.riskThreshold) {
-    return { decision: 'ALLOW', tally, quorumMet, weightedYesRatio };
-  }
-
-  return { decision: 'REQUIRE_HUMAN', tally, quorumMet, weightedYesRatio };
+  // Step 3: Risk acceptable and quorum met → ALLOW
+  return { decision: 'ALLOW', tally, quorumMet, weightedYesRatio, combinedRisk };
 }

@@ -8,8 +8,11 @@
     "web"
   ],
   "scripts": {
-    "dev": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
-    "dev:ui": "concurrently \"npm --workspace shared run build:watch\" \"npm --workspace server run dev\" \"npm --workspace web run dev\"",
+    "start": "concurrently -k -n shared,server,web -c blue,green,magenta \"npm:start:shared\" \"npm:start:server\" \"npm:start:web\"",
+    "start:verbose": "bash bin/dev-ui.sh --verbose",
+    "start:shared": "npm --workspace shared run build:watch",
+    "start:server": "npm --workspace server run dev",
+    "start:web": "npm --workspace web run dev -- --open",
     "mcp:dev": "npm --workspace server run mcp:dev",
     "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build",
     "test": "vitest run",
