@@ -1,5 +1,6 @@
 import { HumanApprovalRequestSchema, parseHumanApprovalYesNo } from '@local-mcp-board/shared';
 import { appendEvent, getRun, listEvents, updateRunStatus } from '../db/store.js';
+import { recordVoteReceived, getPendingApproval, cancelPendingApproval } from '../engine/hitl-tracker.js';
 
 const seen = new Set<string>();
 
@@ -19,6 +20,35 @@ export async function humanApprovePost(body: unknown) {
       approver: parsed.approver,
       idempotencyKey: parsed.idempotencyKey
     });
+
+    // Check multi-voter tracking
+    const pendingEntry = getPendingApproval(parsed.runId);
+    const voteStatus = recordVoteReceived(parsed.runId);
+
+    if (pendingEntry && pendingEntry.mode === 'vote' && !voteStatus.complete) {
+      // Still waiting for more votes — record this vote but don't finalize yet
+      appendEvent(boardId, parsed.runId, 'VOTE_RECEIVED', {
+        approver: parsed.approver,
+        decision,
+        votes_received: voteStatus.total,
+        votes_required: voteStatus.required,
+      });
+      seen.add(dedupe);
+      return {
+        ok: true,
+        runId: parsed.runId,
+        decision,
+        voteRecorded: true,
+        votesReceived: voteStatus.total,
+        votesRequired: voteStatus.required,
+        complete: false,
+      };
+    }
+
+    // All votes received (or single-approval mode) — finalize
+    if (pendingEntry) {
+      cancelPendingApproval(parsed.runId);
+    }
 
     const recent = listEvents({ runId: parsed.runId, limit: 20 }) as any[];
     const aggregated = recent.find((e: any) => e.type === 'AGGREGATED');
@@ -40,11 +70,20 @@ export async function humanApprovePost(body: unknown) {
       reason: reasons[finalDecision],
       risk_score: Number(aggPayload?.top_risk ?? 0.5),
       weighted_yes: Number(aggPayload?.weighted_yes ?? 0),
-      source: 'human.approve'
+      source: 'human.approve',
+      votes_received: voteStatus.total || 1,
+      votes_required: voteStatus.required || 1,
     });
     updateRunStatus(parsed.runId, statusMap[finalDecision]);
   }
 
   seen.add(dedupe);
-  return { ok: true, runId: parsed.runId, decision };
+  return {
+    ok: true,
+    runId: parsed.runId,
+    decision,
+    complete: true,
+    votesReceived: 1,
+    votesRequired: 1,
+  };
 }

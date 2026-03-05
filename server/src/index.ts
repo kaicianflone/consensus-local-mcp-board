@@ -750,6 +750,228 @@ app.post('/api/webhooks/github', async (req, res) => {
   }
 });
 
+// ── Adapter-Specific Inbound Webhooks ──
+// These endpoints receive replies from chat surfaces and route them to human.approve.
+
+// Slack Events API handler
+app.post('/api/webhooks/slack/events', async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    // Slack URL verification challenge
+    if (body.type === 'url_verification') {
+      return res.json({ challenge: body.challenge });
+    }
+
+    if (body.type !== 'event_callback') {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
+
+    const event = body.event || {};
+    // Only handle message events that are replies (not from bots)
+    if (event.type !== 'message' || event.bot_id || event.subtype) {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
+
+    const text = String(event.text || '').trim();
+    const userId = event.user || '';
+
+    // Extract runId from message metadata or thread context
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    // Also check message metadata if available
+    if (!runId && event.metadata?.event_payload?.runId) {
+      runId = event.metadata.event_payload.runId;
+    }
+
+    // Try to find a pending approval matching this user
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'slack' && t.handle === userId)
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Could not determine runId' });
+    }
+
+    // Clean reply text: remove any "run:xxx" prefix
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `slack:${userId}`,
+      idempotencyKey: `slack:${event.event_ts || Date.now()}`,
+      boardId: body.event?.metadata?.event_payload?.boardId
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:slack]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Teams Bot Framework activity handler
+app.post('/api/webhooks/teams/activity', async (req, res) => {
+  try {
+    const activity = req.body || {};
+    if (activity.type !== 'message') {
+      return res.status(200).json({ ok: true, skipped: true });
+    }
+
+    const text = String(activity.text || '').replace(/<at>[^<]*<\/at>/g, '').trim();
+    const userId = activity.from?.id || activity.from?.name || 'teams-user';
+
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    // Try to find pending approval for this user
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'teams' && (t.handle === userId || t.subjectId === activity.from?.name))
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) {
+      return res.status(200).json({ ok: true, skipped: true, reason: 'Could not determine runId' });
+    }
+
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `teams:${userId}`,
+      idempotencyKey: `teams:${activity.id || Date.now()}`,
+      boardId: activity.channelData?.consensus?.boardId
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:teams]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Discord webhook interactions handler
+app.post('/api/webhooks/discord/interactions', async (req, res) => {
+  try {
+    const body = req.body || {};
+    // Discord ping verification
+    if (body.type === 1) return res.json({ type: 1 });
+
+    const text = String(body.data?.options?.[0]?.value || body.content || '').trim();
+    const userId = body.member?.user?.id || body.user?.id || 'discord-user';
+
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'discord' && t.handle === userId)
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) return res.status(200).json({ ok: true, skipped: true });
+
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `discord:${userId}`,
+      idempotencyKey: `discord:${body.id || Date.now()}`
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:discord]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Telegram webhook handler
+app.post('/api/webhooks/telegram', async (req, res) => {
+  try {
+    const update = req.body || {};
+    const message = update.message || update.edited_message;
+    if (!message?.text) return res.status(200).json({ ok: true, skipped: true });
+
+    const text = String(message.text).trim();
+    const userId = String(message.from?.id || 'telegram-user');
+
+    const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
+    let runId = runIdMatch?.[1] || '';
+
+    if (!runId) {
+      const { listPendingApprovals } = await import('./engine/hitl-tracker.js');
+      const pendings = listPendingApprovals();
+      const match = pendings.find(p =>
+        p.prompt.chatTargets?.some(t => t.adapter === 'telegram' && t.handle === userId)
+      );
+      if (match) runId = match.runId;
+    }
+
+    if (!runId) return res.status(200).json({ ok: true, skipped: true });
+
+    const replyText = text.replace(/run[:\s_]+\S+\s*/i, '').trim() || text;
+    const out = await humanApprovePost({
+      runId,
+      replyText,
+      approver: `telegram:${userId}`,
+      idempotencyKey: `telegram:${update.update_id || Date.now()}`
+    });
+    res.json(out);
+  } catch (e: any) {
+    console.error('[webhook:telegram]', e?.message);
+    res.status(200).json({ ok: true, error: e?.message });
+  }
+});
+
+// Generic adapter inbound (for custom/gchat adapters)
+app.post('/api/webhooks/chat/:adapter', async (req, res) => {
+  try {
+    const adapter = req.params.adapter;
+    const body = z.object({
+      runId: z.string(),
+      replyText: z.string(),
+      approver: z.string().default('human'),
+      idempotencyKey: z.string().optional(),
+      boardId: z.string().optional()
+    }).parse(req.body ?? {});
+
+    const out = await humanApprovePost({
+      runId: body.runId,
+      replyText: body.replyText,
+      approver: `${adapter}:${body.approver}`,
+      idempotencyKey: body.idempotencyKey ?? `${adapter}:${body.runId}:${Date.now()}`,
+      boardId: body.boardId
+    });
+    res.json(out);
+  } catch (e: any) {
+    const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'CHAT_REPLY_FAILED';
+    res.status(toHttpStatus(code)).json(err(code, 'Failed to process chat adapter reply', e?.message));
+  }
+});
+
+// ── Pending Approvals API ──
+
+app.get('/api/hitl/pending', (_req, res) => {
+  try {
+    const { listPendingApprovals } = require('./engine/hitl-tracker.js');
+    res.json({ pending: listPendingApprovals() });
+  } catch (e: any) {
+    res.status(500).json(err('HITL_LIST_FAILED', 'Failed to list pending approvals', e?.message));
+  }
+});
+
 app.listen(4010, '127.0.0.1', () => {
   console.log('local-mcp-board server on http://127.0.0.1:4010');
   bootstrapConsensusTools();

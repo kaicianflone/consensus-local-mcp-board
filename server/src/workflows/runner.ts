@@ -12,8 +12,9 @@ import {
   createParticipant
 } from '../db/store.js';
 import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
-import { sendHumanApprovalPrompt } from '../adapters/chat-sdk.js';
+import { sendHumanApprovalPrompt, type ChatPrompt } from '../adapters/chat-sdk.js';
 import { evaluateViaConsensusTools } from '../adapters/consensus-tools.js';
+import { registerPendingApproval } from '../engine/hitl-tracker.js';
 
 const REVIEWER_ARCHETYPES = [
   'security-reviewer',
@@ -311,17 +312,39 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
       });
 
     const promptMode = node.config?.promptMode || 'yes-no';
-    await sendHumanApprovalPrompt({
+    const timeoutSec = Number(node.config?.timeoutSec ?? 900);
+    const requiredVotes = Number(node.config?.requiredVotes ?? 1);
+    const isVoteMode = promptMode === 'vote';
+    const autoDecisionOnExpiry = node.config?.autoDecisionOnExpiry || 'BLOCK';
+
+    const prompt: ChatPrompt = {
       boardId: ids.boardId,
       runId: ids.runId,
       quorum: 0.7,
       risk,
       threshold,
       promptMode,
+      timeoutSec,
+      requiredVotes: isVoteMode ? requiredVotes : 1,
       approverHint: node.config?.approver || 'human',
       chatTargets: chatLinkedParticipants.length > 0 ? chatLinkedParticipants : undefined
+    };
+
+    await sendHumanApprovalPrompt(prompt);
+
+    // Register with the HITL timeout tracker for deadline warnings and auto-expiry
+    registerPendingApproval({
+      runId: ids.runId,
+      boardId: ids.boardId,
+      workflowId: ids.workflowId,
+      prompt,
+      timeoutSec,
+      requiredVotes: isVoteMode ? requiredVotes : 1,
+      mode: isVoteMode ? 'vote' : 'approval',
+      autoDecisionOnExpiry,
     });
-    return { pause: true, risk, threshold, promptMode, chatTargets: chatLinkedParticipants };
+
+    return { pause: true, risk, threshold, promptMode, timeoutSec, requiredVotes, chatTargets: chatLinkedParticipants };
   }
 
   if (node.type === 'group') {
