@@ -113,18 +113,33 @@ export function appendEvent(boardId: string, runId: string | null, type: string,
 }
 
 export function listEvents(filters: { boardId?: string; runId?: string; type?: string; limit?: number }) {
-  let q = 'SELECT * FROM events'; const where: string[] = []; const args: unknown[] = [];
+  let q = 'SELECT rowid AS seq, * FROM events'; const where: string[] = []; const args: unknown[] = [];
   if (filters.boardId) { where.push('board_id=?'); args.push(filters.boardId); }
   if (filters.runId) { where.push('run_id=?'); args.push(filters.runId); }
   if (filters.type) { where.push('type=?'); args.push(filters.type); }
   if (where.length) q += ' WHERE ' + where.join(' AND ');
-  q += ' ORDER BY ts DESC LIMIT ?'; args.push(filters.limit ?? 100);
+  q += ' ORDER BY rowid DESC LIMIT ?'; args.push(filters.limit ?? 100);
   return db.prepare(q).all(...args);
 }
 
 export function searchEvents(query: string, limit = 100) {
   const like = `%${query}%`;
-  return db.prepare('SELECT * FROM events WHERE payload_json LIKE ? OR type LIKE ? ORDER BY ts DESC LIMIT ?').all(like, like, limit);
+  return db.prepare('SELECT rowid AS seq, * FROM events WHERE payload_json LIKE ? OR type LIKE ? ORDER BY rowid DESC LIMIT ?').all(like, like, limit);
+}
+
+export function deleteEvents(filters: { boardId?: string; runId?: string }) {
+  let q = 'DELETE FROM events';
+  const where: string[] = [];
+  const args: unknown[] = [];
+  if (filters.boardId) { where.push('board_id=?'); args.push(filters.boardId); }
+  if (filters.runId) { where.push('run_id=?'); args.push(filters.runId); }
+  if (where.length) q += ' WHERE ' + where.join(' AND ');
+  const result = db.prepare(q).run(...args);
+  return { deleted: result.changes };
+}
+
+export function listDistinctRunIds(limit = 50) {
+  return db.prepare('SELECT DISTINCT run_id FROM events WHERE run_id IS NOT NULL ORDER BY rowid DESC LIMIT ?').all(limit) as { run_id: string }[];
 }
 
 export function createWorkflow(name: string, definition: Json = {}) {
@@ -224,8 +239,9 @@ export function getAgentByApiKey(apiKey: string) {
 export function createParticipant(input: { boardId: string; subjectType: 'agent' | 'human'; subjectId: string; role?: string; weight?: number; reputation?: number; metadata?: Json }) {
   const id = nanoid();
   const ts = Date.now();
+  const rep = Math.round(input.reputation ?? 100);
   db.prepare('INSERT INTO participants(id,board_id,subject_type,subject_id,role,weight,reputation,status,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-    .run(id, input.boardId, input.subjectType, input.subjectId, input.role || 'voter', input.weight ?? 1, input.reputation ?? 100.0, 'active', JSON.stringify(input.metadata || {}), ts, ts);
+    .run(id, input.boardId, input.subjectType, input.subjectId, input.role || 'voter', input.weight ?? 1, rep, 'active', JSON.stringify(input.metadata || {}), ts, ts);
   return db.prepare('SELECT * FROM participants WHERE id=?').get(id);
 }
 
@@ -236,7 +252,7 @@ export function listParticipants(boardId: string) {
 export function updateParticipant(id: string, patch: { reputation?: number; weight?: number; role?: string; status?: string; metadata?: Record<string, unknown> }) {
   const current = db.prepare('SELECT * FROM participants WHERE id=?').get(id) as any;
   if (!current) return null;
-  const reputation = patch.reputation ?? current.reputation;
+  const reputation = patch.reputation != null ? Math.round(patch.reputation) : current.reputation;
   const weight = patch.weight ?? current.weight;
   const role = patch.role ?? current.role;
   const status = patch.status ?? current.status;

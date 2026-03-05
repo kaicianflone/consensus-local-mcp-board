@@ -63,6 +63,35 @@ async function runConsensusEvaluation(runId: string, input: GuardEvaluateRequest
  */
 async function finalizeGuardResult(runId: string, boardId: string, result: any) {
   'use step';
+
+  // Individual agent verdict from consensus evaluation
+  appendEvent(boardId, runId, 'AGENT_VERDICT', {
+    evaluator: result.meta?.engine || 'consensus-tools',
+    verdict: result.decision,
+    risk: result.risk_score,
+    reason: result.reason,
+    guardType: result.guard_type,
+  });
+
+  // Final risk score
+  appendEvent(boardId, runId, 'RISK_SCORE', {
+    risk_score: result.risk_score,
+    decision: result.decision,
+    guardType: result.guard_type,
+    engine: result.meta?.engine || 'consensus-tools',
+  });
+
+  // Final consensus quorum score
+  const quorumScore = result.decision === 'ALLOW' ? 1.0
+    : result.decision === 'REQUIRE_HUMAN' ? 0.0
+    : result.meta?.quorum_score ?? 0.5;
+  appendEvent(boardId, runId, 'CONSENSUS_QUORUM', {
+    quorum_score: quorumScore,
+    decision: result.decision,
+    engine: result.meta?.engine || 'consensus-tools',
+    consensus_meta: result.meta || null,
+  });
+
   const audit = appendEvent(boardId, runId, 'FINAL_DECISION', {
     decision: result.decision,
     reason: result.reason,

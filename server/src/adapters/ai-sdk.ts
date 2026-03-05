@@ -31,6 +31,7 @@ function deterministicFallback(input: GuardEvaluateRequest): AiVote[] {
 export type AgentPersona = {
   name: string;
   reputation: number;
+  weight: number;
   systemPrompt?: string;
   model?: string;
   temperature?: number;
@@ -84,15 +85,15 @@ export async function evaluateWithAiSdk(
   const tasks: Promise<AiVote>[] = [];
 
   for (let i = 0; i < agentCount; i++) {
-    const persona = personas[i] || { name: `agent-${i + 1}`, reputation: 0.5 };
+    const persona = personas[i] || { name: `agent-${i + 1}`, reputation: 100 };
 
     const agentModelId = persona.model || modelId;
     const agentModel = agentModelId !== modelId ? openai(agentModelId) : defaultModel;
     const agentTemperature = persona.temperature ?? temperature;
 
     const personaContext = persona.systemPrompt
-      ? `You are "${persona.name}" (reputation: ${persona.reputation.toFixed(2)}). ${persona.systemPrompt}`
-      : `You are "${persona.name}", a consensus guard evaluator with reputation score ${persona.reputation.toFixed(2)}.`;
+      ? `You are "${persona.name}" (reputation: ${Math.round(persona.reputation)}). ${persona.systemPrompt}`
+      : `You are "${persona.name}", a consensus guard evaluator with reputation score ${Math.round(persona.reputation)}.`;
 
     const baseSystemPrompt = options?.systemPrompt || 'You are a strict consensus guard evaluator.';
 

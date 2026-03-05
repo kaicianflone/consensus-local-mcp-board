@@ -9,11 +9,13 @@ import {
   updateWorkflowRunStatus,
   upsertWorkflowRunLink,
   listParticipants,
-  createParticipant
+  createParticipant,
+  updateParticipant,
+  getPolicyAssignment
 } from '../db/store.js';
 import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
 import { sendHumanApprovalPrompt, type ChatPrompt } from '../adapters/chat-sdk.js';
-import { evaluateViaConsensusTools } from '../adapters/consensus-tools.js';
+import { evaluateViaConsensusTools, resolveVerdictsViaBoard, computeReputationFromLedger, type AgentVerdict } from '../adapters/consensus-tools.js';
 import { registerPendingApproval } from '../engine/hitl-tracker.js';
 
 const REVIEWER_ARCHETYPES = [
@@ -121,7 +123,17 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
       const output = await executeNodeStep(node, context, { boardId, runId, workflowId });
       context[node.id] = output;
 
-      await emitNodeExecuted(boardId, runId, workflowId, i, node, Date.now() - startedAt, output);
+      // Guard node emits board resolution scores via emitBoardResolution step (below)
+      // which reads the already-resolved output from context
+      const eventOutput = node.type === 'guard'
+        ? { guardType: node.config?.guardType || 'agent_action', policyPack: node.config?.policyPack || '', configured: true, boardResolution: !!output?.boardResolution, guardConfig: extractGuardConfig(node.config) }
+        : output;
+      await emitNodeExecuted(boardId, runId, workflowId, i, node, Date.now() - startedAt, eventOutput);
+
+      // After guard node, emit RISK_SCORE + CONSENSUS_QUORUM from the board resolution
+      if (node.type === 'guard' && output?.boardResolution) {
+        await emitBoardResolutionScores(boardId, runId, node, output);
+      }
 
       if (output?.pause === true && (node.type === 'hitl' || node.type === 'group')) {
         await emitWaitingHuman(boardId, runId, workflowId, i, node);
@@ -217,12 +229,72 @@ async function emitWorkflowCompleted(boardId: string, runId: string, workflowId:
 }
 
 /**
+ * Emit RISK_SCORE + CONSENSUS_QUORUM events from the guard node's
+ * board resolution output. Called only when the guard resolved agent
+ * verdicts through the consensus-tools board (boardResolution=true).
+ */
+async function emitBoardResolutionScores(boardId: string, runId: string, guardNode: any, guardOutput: any) {
+  'use step';
+  const quorum = Number(guardNode?.config?.quorum ?? 0.7);
+  const riskThreshold = Number(guardNode?.config?.riskThreshold ?? 0.7);
+
+  // Read the board result already computed by the guard node (no double-resolution)
+  const result = guardOutput?._boardResult as import('../adapters/consensus-tools.js').BoardResolutionResult | undefined;
+  if (!result) return;
+
+  const gc = extractGuardConfig(guardNode?.config);
+  appendEvent(boardId, runId, 'RISK_SCORE', {
+    risk_score: Math.round(result.combinedRisk * 1000) / 1000,
+    decision: result.decision,
+    guard_type: String(guardNode?.config?.guardType || 'agent_action'),
+    voter_count: result.tally.voterCount,
+    yes_count: result.tally.yes,
+    no_count: result.tally.no,
+    rewrite_count: result.tally.rewrite,
+    quorum_threshold: quorum,
+    risk_threshold: riskThreshold,
+    weighted_yes_ratio: Math.round(result.weightedYesRatio * 1000) / 1000,
+    board_audit_id: result.audit_id,
+    board_engine: result.meta?.engine,
+    guard_config: gc,
+  });
+
+  appendEvent(boardId, runId, 'CONSENSUS_QUORUM', {
+    quorum_score: Math.round(result.weightedYesRatio * 1000) / 1000,
+    quorum_met: result.quorumMet,
+    total_voters: result.tally.voterCount,
+    total_weight: Math.round(result.tally.totalWeight * 1000) / 1000,
+    yes_count: result.tally.yes,
+    no_count: result.tally.no,
+    rewrite_count: result.tally.rewrite,
+    decision: result.decision,
+    guard_type: String(guardNode?.config?.guardType || 'agent_action'),
+    quorum_threshold: quorum,
+    risk_threshold: riskThreshold,
+    board_audit_id: result.audit_id,
+    board_engine: result.meta?.engine,
+    guard_config: gc,
+  });
+}
+
+/**
  * Step wrapper around executeNode — makes each node execution a durable step
  * so the SDK can retry on transient failures and track each node independently.
  */
 async function executeNodeStep(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }) {
   'use step';
   return executeNode(node, context, ids);
+}
+
+/** Extract guard-type-specific config fields (excludes shared fields like quorum, riskThreshold). */
+export function extractGuardConfig(config: Record<string, any> | undefined): Record<string, any> {
+  if (!config) return {};
+  const shared = new Set(['guardType', 'quorum', 'riskThreshold', 'numberOfAgents', 'numberOfHumans', 'policyPack']);
+  const gc: Record<string, any> = {};
+  for (const [k, v] of Object.entries(config)) {
+    if (!shared.has(k) && v !== undefined && v !== '') gc[k] = v;
+  }
+  return gc;
 }
 
 async function executeNode(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }) {
@@ -268,29 +340,98 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     let totalWeight = 0;
     let weightedRisk = 0;
     for (let i = 0; i < votes.length; i++) {
-      const rep = personas[i]?.reputation ?? 0.5;
+      const rep = personas[i]?.reputation ?? 100;
       totalWeight += rep;
       weightedRisk += votes[i].risk * rep;
     }
     const aggregatedRisk = totalWeight > 0 ? weightedRisk / totalWeight : votes.length > 0 ? votes.reduce((s, v) => s + v.risk, 0) / votes.length : 0.5;
 
+    // Emit per-evaluator AGENT_VERDICT events (include participant weight + reputation for rolling scores)
+    for (let vi = 0; vi < votes.length; vi++) {
+      const v = votes[vi];
+      const w = personas[vi]?.weight ?? 1;
+      const r = personas[vi]?.reputation ?? 100;
+      appendEvent(ids.boardId, ids.runId, 'AGENT_VERDICT', {
+        evaluator: v.evaluator,
+        verdict: v.vote,
+        risk: v.risk,
+        reason: v.reason,
+        weight: w,
+        reputation: r,
+        guardType: 'agent_action',
+      });
+    }
+
     return { votes, aggregatedRisk, agentCount, personas: personas.map((p) => ({ name: p.name, reputation: p.reputation })) };
   }
 
   if (node.type === 'guard') {
+    const guardType = String(node.config?.guardType || 'agent_action');
+    const quorum = Number(node.config?.quorum ?? 0.7);
+    const riskThreshold = Number(node.config?.riskThreshold ?? 0.7);
+
+    // Check for agent verdicts from upstream agent/group nodes
+    const storedVerdicts = (listEvents({ runId: ids.runId, type: 'AGENT_VERDICT', limit: 500 }) as any[]);
+
+    if (storedVerdicts.length > 0) {
+      // Agents ran before guard — resolve their verdicts through the board
+      const verdicts: AgentVerdict[] = [];
+      for (const v of storedVerdicts) {
+        let p: any = {};
+        try { p = JSON.parse(v.payload_json); } catch {}
+        verdicts.push({
+          evaluator: String(p.evaluator || 'unknown'),
+          verdict: String(p.verdict || 'YES').toUpperCase() as 'YES' | 'NO' | 'REWRITE',
+          risk: Number(p.risk ?? 0.5),
+          reason: String(p.reason || ''),
+          weight: Number(p.weight ?? 1),
+          reputation: Number(p.reputation ?? 100),
+        });
+      }
+
+      // Look up policy assignment for weighting mode
+      const policyAssignment = getPolicyAssignment(ids.boardId, 'default') as any;
+      const weightingMode = (policyAssignment?.weighting_mode || 'hybrid') as import('@local-mcp-board/shared').WeightingMode;
+
+      const result = resolveVerdictsViaBoard(
+        { boardId: ids.boardId, runId: ids.runId, guardType, payload: { input: context, guardConfig: node.config || {} }, policyPack: String(node.config?.policyPack || '') },
+        verdicts,
+        quorum,
+        riskThreshold,
+        weightingMode,
+      );
+
+      // Sync participant reputation from ledger after resolution
+      syncReputationFromLedger(ids.boardId, verdicts);
+
+      return {
+        decision: result.decision,
+        risk: result.combinedRisk,
+        reasons: [result.reason],
+        consensus: result.meta || null,
+        boardResolution: true,
+        _boardResult: result,
+      };
+    }
+
+    // No agent verdicts — standalone guard (guard-only or guard-before-agents workflow)
     const consensus = evaluateViaConsensusTools({
       runId: ids.runId,
       boardId: ids.boardId,
-      guardType: String(node.config?.guardType || 'agent_action'),
+      guardType,
       payload: { input: context, guardConfig: node.config || {} },
       policyPack: String(node.config?.policyPack || '')
     });
 
+    const guardDecisionVal = consensus.decision === 'ALLOW' ? 'ALLOW' : consensus.decision === 'BLOCK' ? 'BLOCK' : 'REWRITE';
+    const guardRisk = Number(consensus.risk_score ?? 0.6);
+
     return {
-      decision: consensus.decision === 'ALLOW' ? 'ALLOW' : consensus.decision === 'BLOCK' ? 'BLOCK' : 'REWRITE',
-      risk: Number(consensus.risk_score ?? 0.6),
+      decision: guardDecisionVal,
+      risk: guardRisk,
       reasons: [consensus.reason],
-      consensus: consensus.meta || null
+      consensus: consensus.meta || null,
+      boardResolution: false,
     };
   }
 
@@ -399,12 +540,13 @@ async function resolvePersonas(boardId: string, agentCount: number, personaMode:
       const name = names[i % names.length];
       let participant = existing.find((p: any) => p.subject_id === name);
       if (!participant) {
-        participant = createParticipant({ boardId, subjectType: 'agent', subjectId: name, role: 'reviewer', weight: 1, reputation: 0.5 });
+        participant = createParticipant({ boardId, subjectType: 'agent', subjectId: name, role: 'reviewer', weight: 1, reputation: 100 });
       }
       const meta = parseParticipantMetadata(participant);
       personas.push({
         name,
-        reputation: Number(participant?.reputation ?? 0.5),
+        reputation: Number(participant?.reputation ?? 100),
+        weight: Number(participant?.weight ?? 1),
         systemPrompt: meta.systemPrompt || undefined,
         model: meta.model || undefined,
         temperature: meta.temperature !== undefined ? Number(meta.temperature) : undefined,
@@ -423,7 +565,8 @@ async function resolvePersonas(boardId: string, agentCount: number, personaMode:
         const meta = parseParticipantMetadata(p);
         personas.push({
           name: p.subject_id,
-          reputation: Number(p.reputation ?? 0.5),
+          reputation: Number(p.reputation ?? 100),
+          weight: Number(p.weight ?? 1),
           systemPrompt: meta.systemPrompt || undefined,
           model: meta.model || undefined,
           temperature: meta.temperature !== undefined ? Number(meta.temperature) : undefined,
@@ -432,12 +575,36 @@ async function resolvePersonas(boardId: string, agentCount: number, personaMode:
         const archetype = REVIEWER_ARCHETYPES[i % REVIEWER_ARCHETYPES.length];
         const alreadyExists = existing.find((p: any) => p.subject_id === archetype);
         if (!alreadyExists) {
-          createParticipant({ boardId, subjectType: 'agent', subjectId: archetype, role: 'reviewer', weight: 1, reputation: 0.5 });
+          createParticipant({ boardId, subjectType: 'agent', subjectId: archetype, role: 'reviewer', weight: 1, reputation: 100 });
         }
-        personas.push({ name: archetype, reputation: Number(alreadyExists?.reputation ?? 0.5) });
+        personas.push({ name: archetype, reputation: Number(alreadyExists?.reputation ?? 100), weight: Number(alreadyExists?.weight ?? 1) });
       }
     }
   }
 
   return personas;
+}
+
+/**
+ * After a board resolution, sync participant reputation from the consensus-tools ledger.
+ * This reads the ledger file and updates each agent's reputation in our DB.
+ * Weight (manual override) is left untouched.
+ */
+function syncReputationFromLedger(boardId: string, verdicts: AgentVerdict[]) {
+  try {
+    const participants = listParticipants(boardId) as any[];
+    const agentNames = new Set(verdicts.map(v => v.evaluator));
+
+    for (const name of agentNames) {
+      const participant = participants.find((p: any) => p.subject_id === name);
+      if (!participant) continue;
+
+      const ledgerRep = computeReputationFromLedger(undefined, name);
+      if (ledgerRep !== Number(participant.reputation)) {
+        updateParticipant(participant.id, { reputation: ledgerRep });
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[runner] Failed to sync reputation from ledger: ${e?.message?.split('\\n')[0]}`);
+  }
 }

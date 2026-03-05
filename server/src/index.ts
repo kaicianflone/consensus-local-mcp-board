@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, db, deleteParticipant, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment, type WorkflowRecord } from './db/store.js';
+import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, db, deleteParticipant, deleteEvents, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listDistinctRunIds, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment, type WorkflowRecord } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
@@ -78,12 +78,12 @@ const TEMPLATE_1 = {
   boardId: 'workflow-system',
   nodes: [
     { id: 'trigger-github-pr', type: 'trigger', label: 'GitHub PR Opened', config: { source: 'github.pr.opened', repo: '', branch: 'main' } },
-    { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, numberOfReviewers: 3, policyPack: 'merge-default' } },
     { id: 'parallel-review', type: 'group', label: 'Parallel Review', config: { linkedGuardId: 'guard-code-merge', children: [
       { id: 'agent-1', type: 'agent', label: 'Security Reviewer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'security-reviewer', model: 'gpt-4o-mini' } },
       { id: 'agent-2', type: 'agent', label: 'Performance Analyst', config: { agentCount: 1, personaMode: 'manual', personaNames: 'performance-analyst', model: 'gpt-4o-mini' } },
       { id: 'agent-3', type: 'agent', label: 'Code Quality', config: { agentCount: 1, personaMode: 'manual', personaNames: 'code-quality-reviewer', model: 'gpt-4o-mini' } }
     ] } },
+    { id: 'guard-code-merge', type: 'guard', label: 'Code Merge Guard', config: { guardType: 'code_merge', quorum: 0.6, riskThreshold: 0.7, hitlThreshold: 0.6, numberOfReviewers: 3, policyPack: 'merge-default' } },
     { id: 'human-approval-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
     { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHumanApprovalYes: true, idempotencyKeyFrom: 'pr.sha' } }
   ]
@@ -297,6 +297,10 @@ app.get('/api/workflows', (_req, res) => {
   const existing = listWorkflows();
   if (!existing.length) {
     createWorkflow('Template 1 - GitHub PR Merge Guard', TEMPLATE_1 as any);
+  } else {
+    // Keep Template 1 definition in sync with code
+    const tmpl = existing.find((w: any) => w.name === 'Template 1 - GitHub PR Merge Guard');
+    if (tmpl) updateWorkflow((tmpl as any).id, { definition: TEMPLATE_1 as any });
   }
   res.json({ workflows: listWorkflows() });
 });
@@ -368,6 +372,25 @@ app.get('/api/mcp/events', (req, res) => {
     res.json({ events: listEvents({ ...q, limit: q.limit || 100 }) });
   } catch (e: any) {
     res.status(400).json(err('INVALID_QUERY', 'Invalid query params', e?.message));
+  }
+});
+
+app.get('/api/mcp/events/run-ids', (_req, res) => {
+  try {
+    const rows = listDistinctRunIds(100);
+    res.json({ runIds: rows.map(r => r.run_id) });
+  } catch (e: any) {
+    res.status(500).json(err('LIST_RUN_IDS_FAILED', 'Failed to list run IDs', e?.message));
+  }
+});
+
+app.delete('/api/mcp/events', (req, res) => {
+  try {
+    const q = z.object({ boardId: z.string().optional(), runId: z.string().optional() }).parse(req.query);
+    const result = deleteEvents(q);
+    res.json({ ok: true, ...result });
+  } catch (e: any) {
+    res.status(400).json(err('DELETE_EVENTS_FAILED', 'Failed to delete events', e?.message));
   }
 });
 

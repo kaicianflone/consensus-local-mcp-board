@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Select } from '../ui/select';
 import { Badge } from '../ui/badge';
-import { Settings, Save, X, Plus, Trash2, Bot, Info } from 'lucide-react';
+import { Settings, Save, X, Plus, Trash2, Bot, Info, Mail, GitMerge, Globe, MessageSquare, Rocket, Lock, Cpu } from 'lucide-react';
 import type { WorkflowNode } from './NodeCanvas';
 import { NODE_ICON_COLORS, PALETTE, type NodeType } from './NodePalette';
 
@@ -218,6 +218,9 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
                 </span>
                 <Input type="number" min="0" max="10" value={draft.numberOfHumans ?? 0} onChange={(e) => set('numberOfHumans', Number(e.target.value))} />
               </FieldLabel>
+
+              {/* ── Guard-Type-Specific Settings ── */}
+              <GuardSpecificSettings guardType={draft.guardType || 'code_merge'} draft={draft} set={set} />
             </>
           )}
 
@@ -309,6 +312,353 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Guard-type-specific icons ──
+const GUARD_TYPE_META: Record<string, { icon: React.ElementType; label: string; color: string }> = {
+  send_email: { icon: Mail, label: 'Email Guard', color: 'text-rose-400' },
+  code_merge: { icon: GitMerge, label: 'Code Merge Guard', color: 'text-violet-400' },
+  publish: { icon: Globe, label: 'Publish Guard', color: 'text-sky-400' },
+  support_reply: { icon: MessageSquare, label: 'Support Reply Guard', color: 'text-teal-400' },
+  agent_action: { icon: Cpu, label: 'Agent Action Guard', color: 'text-amber-400' },
+  deployment: { icon: Rocket, label: 'Deployment Guard', color: 'text-orange-400' },
+  permission_escalation: { icon: Lock, label: 'Permission Escalation Guard', color: 'text-red-400' },
+};
+
+function GuardSpecificSettings({ guardType, draft, set }: { guardType: string; draft: Record<string, any>; set: (k: string, v: any) => void }) {
+  const meta = GUARD_TYPE_META[guardType];
+  if (!meta) return null;
+  const Icon = meta.icon;
+
+  return (
+    <div className="col-span-2 border-t border-border/30 pt-3 mt-1 space-y-3">
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className={`h-4 w-4 ${meta.color}`} />
+        <span className="text-xs font-semibold text-foreground">{meta.label} Settings</span>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {guardType === 'send_email' && (
+          <>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Recipient Allowlist
+                <span title="Comma-separated email domains that are always allowed (e.g. company.com). Leave blank to allow all.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Input value={draft.recipientAllowlist ?? ''} onChange={(e) => set('recipientAllowlist', e.target.value)} placeholder="company.com, partner.org" />
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Recipient Blocklist
+                <span title="Comma-separated email domains to always block (e.g. competitor.com).">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Input value={draft.recipientBlocklist ?? ''} onChange={(e) => set('recipientBlocklist', e.target.value)} placeholder="competitor.com" />
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Attachment Policy
+                <span title="How to handle emails with attachments.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.attachmentPolicy ?? 'warn'} onChange={(e) => set('attachmentPolicy', e.target.value)}>
+                <option value="allow">Allow</option>
+                <option value="warn">Warn (flag for review)</option>
+                <option value="block">Block</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Secrets Scanning
+                <span title="Scan email body for API keys, tokens, passwords, and other secrets.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.secretsScanning === false ? 'off' : 'on'} onChange={(e) => set('secretsScanning', e.target.value === 'on')}>
+                <option value="on">Enabled</option>
+                <option value="off">Disabled</option>
+              </Select>
+            </FieldLabel>
+          </>
+        )}
+
+        {guardType === 'code_merge' && (
+          <>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Sensitive File Patterns
+                <span title="Comma-separated path patterns that trigger elevated risk (e.g. auth/, *.key, security/).">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Input value={draft.sensitiveFilePatterns ?? 'auth,security,permission,crypto'} onChange={(e) => set('sensitiveFilePatterns', e.target.value)} placeholder="auth, security, *.key" />
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Required Reviewers
+                <span title="Minimum number of human code reviewers required before merge.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Input type="number" min="0" max="10" value={draft.requiredReviewers ?? 1} onChange={(e) => set('requiredReviewers', Number(e.target.value))} />
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Protected Branches
+                <span title="Comma-separated branch names that require stricter review (e.g. main, release/*).">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Input value={draft.protectedBranches ?? 'main'} onChange={(e) => set('protectedBranches', e.target.value)} placeholder="main, release/*" />
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                CI Required
+                <span title="Require CI checks to pass before merge is allowed.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.ciRequired === false ? 'off' : 'on'} onChange={(e) => set('ciRequired', e.target.value === 'on')}>
+                <option value="on">Required</option>
+                <option value="off">Not Required</option>
+              </Select>
+            </FieldLabel>
+          </>
+        )}
+
+        {guardType === 'publish' && (
+          <>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Profanity Filter
+                <span title="Scan content for profanity and flag for review.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.profanityFilter === false ? 'off' : 'on'} onChange={(e) => set('profanityFilter', e.target.value === 'on')}>
+                <option value="on">Enabled</option>
+                <option value="off">Disabled</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                PII Detection
+                <span title="Detect personally identifiable information (SSN, phone, email) in published content.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.piiDetection === false ? 'off' : 'on'} onChange={(e) => set('piiDetection', e.target.value === 'on')}>
+                <option value="on">Enabled</option>
+                <option value="off">Disabled</option>
+              </Select>
+            </FieldLabel>
+            <div className="col-span-2">
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Blocked Words
+                  <span title="Comma-separated custom words or phrases to block from publishing.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
+                </span>
+                <Input value={draft.blockedWords ?? ''} onChange={(e) => set('blockedWords', e.target.value)} placeholder="confidential, internal-only" />
+              </FieldLabel>
+            </div>
+          </>
+        )}
+
+        {guardType === 'support_reply' && (
+          <>
+            <div className="col-span-2">
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Escalation Keywords
+                  <span title="Comma-separated keywords that trigger escalation (e.g. refund, lawsuit, legal action).">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
+                </span>
+                <Input value={draft.escalationKeywords ?? 'refund,lawsuit,legal action'} onChange={(e) => set('escalationKeywords', e.target.value)} placeholder="refund, lawsuit, legal action" />
+              </FieldLabel>
+            </div>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Auto-Escalate
+                <span title="Automatically escalate to a human when escalation keywords are detected instead of just flagging.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.autoEscalate === false ? 'off' : 'on'} onChange={(e) => set('autoEscalate', e.target.value === 'on')}>
+                <option value="on">Enabled</option>
+                <option value="off">Disabled</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Customer Tier
+                <span title="Default customer tier for risk evaluation. Higher tiers get stricter review.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.customerTier ?? 'all'} onChange={(e) => set('customerTier', e.target.value)}>
+                <option value="all">All Tiers</option>
+                <option value="free">Free</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Enterprise</option>
+              </Select>
+            </FieldLabel>
+          </>
+        )}
+
+        {guardType === 'agent_action' && (
+          <>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Irreversible Default
+                <span title="Whether agent actions are treated as irreversible by default (require review).">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.irreversibleDefault ? 'on' : 'off'} onChange={(e) => set('irreversibleDefault', e.target.value === 'on')}>
+                <option value="off">Reversible (lower risk)</option>
+                <option value="on">Irreversible (require review)</option>
+              </Select>
+            </FieldLabel>
+            <div className="col-span-2">
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Tool Allowlist
+                  <span title="Comma-separated MCP tool names that are allowed without review. Leave blank to review all.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
+                </span>
+                <Input value={draft.toolAllowlist ?? ''} onChange={(e) => set('toolAllowlist', e.target.value)} placeholder="read_file, list_dir, grep_search" />
+              </FieldLabel>
+            </div>
+            <div className="col-span-2">
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Tool Blocklist
+                  <span title="Comma-separated MCP tool names that always require review.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
+                </span>
+                <Input value={draft.toolBlocklist ?? ''} onChange={(e) => set('toolBlocklist', e.target.value)} placeholder="run_in_terminal, delete_file" />
+              </FieldLabel>
+            </div>
+          </>
+        )}
+
+        {guardType === 'deployment' && (
+          <>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Environment
+                <span title="Target deployment environment. Production deployments get stricter review.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.deployEnv ?? 'prod'} onChange={(e) => set('deployEnv', e.target.value)}>
+                <option value="dev">Development</option>
+                <option value="staging">Staging</option>
+                <option value="prod">Production</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Rollout Strategy
+                <span title="How the deployment is rolled out.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.rolloutStrategy ?? 'all-at-once'} onChange={(e) => set('rolloutStrategy', e.target.value)}>
+                <option value="canary">Canary</option>
+                <option value="blue-green">Blue-Green</option>
+                <option value="rolling">Rolling</option>
+                <option value="all-at-once">All at Once</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Require Prod Approval
+                <span title="Always require human approval for production deployments regardless of risk score.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.requireProdApproval === false ? 'off' : 'on'} onChange={(e) => set('requireProdApproval', e.target.value === 'on')}>
+                <option value="on">Required</option>
+                <option value="off">Not Required</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Rollback Enabled
+                <span title="Whether automatic rollback is available if the deployment fails health checks.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.rollbackEnabled === false ? 'off' : 'on'} onChange={(e) => set('rollbackEnabled', e.target.value === 'on')}>
+                <option value="on">Enabled</option>
+                <option value="off">Disabled</option>
+              </Select>
+            </FieldLabel>
+          </>
+        )}
+
+        {guardType === 'permission_escalation' && (
+          <>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Break-Glass Default
+                <span title="Whether escalation requests are treated as break-glass (emergency, bypasses normal approval) by default.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.breakGlassDefault ? 'on' : 'off'} onChange={(e) => set('breakGlassDefault', e.target.value === 'on')}>
+                <option value="off">Normal Escalation</option>
+                <option value="on">Break-Glass (emergency)</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Max Escalation Level
+                <span title="Maximum number of escalation levels allowed (1-5). Higher levels require more approval.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Input type="number" min="1" max="5" value={draft.maxEscalationLevel ?? 3} onChange={(e) => set('maxEscalationLevel', Number(e.target.value))} />
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Require MFA
+                <span title="Require multi-factor authentication for permission escalation approvals.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.requireMfa ? 'on' : 'off'} onChange={(e) => set('requireMfa', e.target.value === 'on')}>
+                <option value="off">Not Required</option>
+                <option value="on">Required</option>
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
+                Environment
+                <span title="Target environment for permission escalation. Production escalations get stricter review.">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Select value={draft.permEnv ?? 'prod'} onChange={(e) => set('permEnv', e.target.value)}>
+                <option value="dev">Development</option>
+                <option value="staging">Staging</option>
+                <option value="prod">Production</option>
+              </Select>
+            </FieldLabel>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

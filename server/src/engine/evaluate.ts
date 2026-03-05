@@ -60,7 +60,40 @@ export function evaluate(input: EvaluateInput): GuardResult {
   const votes = evaluatorVotes(input);
   for (const v of votes) appendEvent(input.boardId, runId, 'EVALUATOR_VOTE', v);
 
+  // Individual agent verdicts
+  for (const v of votes) {
+    appendEvent(input.boardId, runId, 'AGENT_VERDICT', {
+      evaluator: v.evaluator,
+      verdict: v.vote,
+      risk: v.risk,
+      reason: v.reason,
+      guardType: input.action.type,
+    });
+  }
+
   const result = finalize(votes, input.action.type);
+
+  // Final risk score
+  appendEvent(input.boardId, runId, 'RISK_SCORE', {
+    risk_score: result.risk_score,
+    decision: result.decision,
+    guardType: input.action.type,
+    voter_count: votes.length,
+  });
+
+  // Final consensus quorum score
+  const totalWeight = votes.reduce((sum, v) => sum + 1, 0);
+  const yesWeight = votes.filter(v => v.vote === 'YES').length;
+  const quorumRatio = totalWeight > 0 ? yesWeight / totalWeight : 0;
+  appendEvent(input.boardId, runId, 'CONSENSUS_QUORUM', {
+    quorum_score: quorumRatio,
+    total_voters: totalWeight,
+    yes_count: yesWeight,
+    no_count: votes.filter(v => v.vote === 'NO').length,
+    rewrite_count: votes.filter(v => v.vote === 'REWRITE').length,
+    decision: result.decision,
+  });
+
   const final = appendEvent(input.boardId, runId, 'FINAL_DECISION', result);
   updateRunStatus(runId, result.decision === 'ALLOW' ? 'APPROVED' : 'REVIEWED');
 

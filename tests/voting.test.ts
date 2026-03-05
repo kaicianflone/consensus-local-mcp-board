@@ -91,19 +91,26 @@ describe('Voting', () => {
       expect(result.decision).toBe('ALLOW');
       expect(result.quorumMet).toBe(true);
       expect(result.weightedYesRatio).toBe(1);
+      expect(result.combinedRisk).toBe(0.5);
     });
 
-    it('should BLOCK when majority NO and quorum met', () => {
-      const votes = [makeVote('NO', 1), makeVote('NO', 1), makeVote('YES', 0.5)];
+    it('should BLOCK when combined risk exceeds threshold', () => {
+      const votes = [
+        { evaluator: 'a', vote: 'NO' as const, reason: 'Dangerous', risk: 0.9, weight: 1, confidence: 1 },
+        { evaluator: 'b', vote: 'NO' as const, reason: 'Risky', risk: 0.8, weight: 1, confidence: 1 },
+        { evaluator: 'c', vote: 'YES' as const, reason: 'OK', risk: 0.6, weight: 0.5, confidence: 1 },
+      ];
       const result = computeDecision(votes, defaultPolicy);
+      // combinedRisk = (0.9+0.8+0.3)/2.5 = 2.0/2.5 = 0.8 > 0.7 → BLOCK
       expect(result.decision).toBe('BLOCK');
-      expect(result.quorumMet).toBe(true);
+      expect(result.combinedRisk).toBeCloseTo(0.8, 2);
     });
 
-    it('should REWRITE when majority REWRITE and quorum met', () => {
+    it('should REQUIRE_HUMAN when YES ratio below quorum despite low risk', () => {
       const votes = [makeVote('REWRITE', 1), makeVote('REWRITE', 1), makeVote('YES', 0.5)];
       const result = computeDecision(votes, defaultPolicy);
-      expect(result.decision).toBe('REWRITE');
+      // combinedRisk=0.5 <= 0.7, weightedYesRatio = 0.5/2.5 = 0.2 < 0.7 quorum → REQUIRE_HUMAN
+      expect(result.decision).toBe('REQUIRE_HUMAN');
     });
 
     it('should REQUIRE_HUMAN when quorum not met', () => {
@@ -113,21 +120,31 @@ describe('Voting', () => {
       expect(result.quorumMet).toBe(false);
     });
 
-    it('should BLOCK when NO weight exceeds threshold in split vote', () => {
-      const votes = [makeVote('YES', 0.5), makeVote('NO', 0.5)];
+    it('should BLOCK when high-risk votes in split scenario', () => {
+      const votes = [
+        { evaluator: 'a', vote: 'YES' as const, reason: '', risk: 0.8, weight: 0.5, confidence: 1 },
+        { evaluator: 'b', vote: 'NO' as const, reason: '', risk: 0.9, weight: 0.5, confidence: 1 },
+      ];
       const result = computeDecision(votes, defaultPolicy);
+      // combinedRisk = (0.8*0.5 + 0.9*0.5) / 1.0 = 0.85 > 0.7 → BLOCK
       expect(result.decision).toBe('BLOCK');
     });
 
-    it('should REQUIRE_HUMAN when result is ambiguous below thresholds', () => {
-      const votes = [makeVote('YES', 0.5), makeVote('NO', 0.05), makeVote('REWRITE', 0.05)];
+    it('should REQUIRE_HUMAN when YES ratio barely misses quorum', () => {
+      const votes = [makeVote('YES', 0.4), makeVote('NO', 0.3), makeVote('REWRITE', 0.3)];
       const result = computeDecision(votes, { ...defaultPolicy, quorum: 0.5, riskThreshold: 0.9 });
+      // combinedRisk=0.5 <= 0.9. weightedYesRatio = 0.4/1.0 = 0.4 < 0.5 quorum → REQUIRE_HUMAN
       expect(result.decision).toBe('REQUIRE_HUMAN');
     });
 
-    it('should handle all same votes', () => {
-      const votes = [makeVote('NO'), makeVote('NO'), makeVote('NO')];
+    it('should BLOCK when all voters assess high risk', () => {
+      const votes = [
+        { evaluator: 'a', vote: 'NO' as const, reason: '', risk: 0.9, weight: 1, confidence: 1 },
+        { evaluator: 'b', vote: 'NO' as const, reason: '', risk: 0.8, weight: 1, confidence: 1 },
+        { evaluator: 'c', vote: 'NO' as const, reason: '', risk: 0.85, weight: 1, confidence: 1 },
+      ];
       const result = computeDecision(votes, defaultPolicy);
+      // combinedRisk = (0.9+0.8+0.85)/3 = 0.85 > 0.7 → BLOCK
       expect(result.decision).toBe('BLOCK');
       expect(result.tally.no).toBe(3);
     });
@@ -139,10 +156,51 @@ describe('Voting', () => {
       expect(result.quorumMet).toBe(true);
     });
 
-    it('should handle weighted tie scenario', () => {
+    it('should REQUIRE_HUMAN on weighted tie (low YES ratio)', () => {
       const votes = [makeVote('YES', 1), makeVote('NO', 1)];
       const result = computeDecision(votes, defaultPolicy);
-      expect(['REQUIRE_HUMAN', 'BLOCK', 'ALLOW']).toContain(result.decision);
+      // combinedRisk=0.5<=0.7, weightedYesRatio=0.5<0.7 quorum → REQUIRE_HUMAN
+      expect(result.decision).toBe('REQUIRE_HUMAN');
+    });
+
+    // ── Guard harness weighted voting scenarios ──
+
+    it('should ALLOW with 2 YES + 1 REWRITE when YES ratio meets threshold', () => {
+      const policy = { ...defaultPolicy, quorum: 0.6, riskThreshold: 0.6 };
+      const votes = [makeVote('YES', 1), makeVote('YES', 1), makeVote('REWRITE', 1)];
+      const result = computeDecision(votes, policy);
+      // weightedYes = 2/3 = 0.667, threshold 0.6 → ALLOW
+      expect(result.decision).toBe('ALLOW');
+      expect(result.weightedYesRatio).toBeCloseTo(0.667, 2);
+    });
+
+    it('should respect participant weight in decision', () => {
+      const policy = { ...defaultPolicy, quorum: 0.5, riskThreshold: 0.5 };
+      // High-weight YES (3) vs two low-weight NOs (1 each)
+      const votes = [makeVote('YES', 3), makeVote('NO', 1), makeVote('NO', 1)];
+      const result = computeDecision(votes, policy);
+      // combinedRisk=0.5 (not > 0.5), weightedYesRatio = 3/5 = 0.6 >= 0.5 quorum → ALLOW
+      expect(result.decision).toBe('ALLOW');
+    });
+
+    it('should not discount weight by risk (confidence=1)', () => {
+      const policy = { ...defaultPolicy, quorum: 0.5, riskThreshold: 0.7 };
+      const votes = [
+        { evaluator: 'a', vote: 'YES' as const, reason: '', risk: 0.9, weight: 1, confidence: 1 },
+        { evaluator: 'b', vote: 'YES' as const, reason: '', risk: 0.8, weight: 1, confidence: 1 },
+      ];
+      const tally = tallyVotes(votes);
+      // With confidence=1, totalWeight = 2, not discounted by risk
+      expect(tally.totalWeight).toBe(2);
+      expect(tally.weightedYes).toBe(2);
+    });
+
+    it('should REQUIRE_HUMAN when total weight below quorum threshold', () => {
+      const policy = { ...defaultPolicy, quorum: 2 };
+      const votes = [makeVote('YES', 0.5), makeVote('YES', 0.5)];
+      const result = computeDecision(votes, policy);
+      expect(result.decision).toBe('REQUIRE_HUMAN');
+      expect(result.quorumMet).toBe(false);
     });
   });
 });
