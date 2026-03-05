@@ -9,8 +9,67 @@ import { humanApprovePost } from './api/human.approve.post.js';
 import { resumeWorkflow, runWorkflow } from './workflows/runner.js';
 import { upsertCredential, listCredentials, deleteCredential, getProviderStatus, getCredential } from './db/credentials.js';
 import crypto from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+
+// ── consensus-tools bootstrap ──
+
+function findConsensusBin(): string | null {
+  if (process.env.CONSENSUS_TOOLS_BIN) return process.env.CONSENSUS_TOOLS_BIN;
+  try {
+    const found = execSync('which consensus-tools', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    if (found && existsSync(found)) return found;
+  } catch { /* not on PATH */ }
+  const candidates = [
+    '/opt/homebrew/lib/node_modules/@consensus-tools/consensus-tools/bin/consensus-tools.js',
+    '/usr/local/lib/node_modules/@consensus-tools/consensus-tools/bin/consensus-tools.js',
+    `${process.env.HOME}/.openclaw/workspace/repos/consensus-tools/bin/consensus-tools.js`,
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
+function runConsensusCli(bin: string, args: string[]): any {
+  const cmd = bin.endsWith('.js') ? 'node' : bin;
+  const cmdArgs = bin.endsWith('.js') ? [bin, ...args] : args;
+  const raw = execFileSync(cmd, cmdArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return null;
+  try { return JSON.parse(trimmed); } catch { return { raw: trimmed }; }
+}
+
+function bootstrapConsensusTools() {
+  const bin = findConsensusBin();
+  if (!bin) {
+    console.log('[bootstrap] consensus-tools CLI not found — skipping auto-init');
+    return;
+  }
+
+  try {
+    const boardMode = runConsensusCli(bin, ['config', 'get', 'board_mode']);
+    // boardMode is a JSON value: "local", "remote", or null
+    const mode = typeof boardMode === 'string' ? boardMode : null;
+
+    if (!mode || mode === 'null') {
+      // Not initialized → set up with local defaults pointing at our server
+      console.log('[bootstrap] consensus-tools not configured — running auto-init with local defaults...');
+      runConsensusCli(bin, ['board', 'use', 'local']);
+      runConsensusCli(bin, ['config', 'set', 'board_mode', 'local']);
+      runConsensusCli(bin, ['config', 'set', 'api_url', 'http://127.0.0.1:4010']);
+      console.log('[bootstrap] consensus-tools initialized: board_mode=local, api_url=http://127.0.0.1:4010');
+    } else {
+      // Already initialized → create a new board for this session
+      console.log(`[bootstrap] consensus-tools already configured (mode=${mode}) — creating startup board...`);
+      const board = createBoard(`session-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}`);
+      console.log(`[bootstrap] Created board: ${board.id} (${board.name})`);
+    }
+  } catch (e: any) {
+    console.warn(`[bootstrap] consensus-tools bootstrap failed (non-fatal): ${e?.message || e}`);
+  }
+}
 
 const app = express();
 const verbose = process.env.VERBOSE === '1' || process.argv.includes('--verbose');
@@ -691,4 +750,7 @@ app.post('/api/webhooks/github', async (req, res) => {
   }
 });
 
-app.listen(4010, '127.0.0.1', () => console.log('local-mcp-board server on http://127.0.0.1:4010'));
+app.listen(4010, '127.0.0.1', () => {
+  console.log('local-mcp-board server on http://127.0.0.1:4010');
+  bootstrapConsensusTools();
+});

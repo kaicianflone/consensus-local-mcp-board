@@ -4,8 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:nitro": "nitro dev",
     "mcp:dev": "tsx src/mcp/server.ts --stdio",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "build:nitro": "nitro build",
+    "workflow:web": "npx workflow web",
+    "workflow:inspect": "npx workflow inspect runs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.39",
@@ -17,6 +21,8 @@
     "chat": "^4.15.0",
     "express": "^4.21.2",
     "nanoid": "^5.0.9",
+    "nitro": "^3.0.1-alpha.2",
+    "workflow": "^4.1.0-beta.63",
     "zod": "^3.23.8"
   },
   "devDependencies": {

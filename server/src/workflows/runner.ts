@@ -1,3 +1,4 @@
+import { sleep, FatalError } from 'workflow';
 import {
   appendEvent,
   createRun,
@@ -7,7 +8,6 @@ import {
   createWorkflowRun,
   updateWorkflowRunStatus,
   upsertWorkflowRunLink,
-  getWorkflowRunLink,
   listParticipants,
   createParticipant
 } from '../db/store.js';
@@ -34,51 +34,26 @@ type RunOpts = {
   context?: Record<string, any>;
 };
 
-const ENGINE = (process.env.WORKFLOW_ENGINE || 'devkit').toLowerCase();
-
+/**
+ * Primary entry point: starts a full durable workflow run.
+ * Uses Vercel Workflow SDK "use workflow" directive for durable execution.
+ */
 export async function runWorkflow(definition: any, workflowId: string, opts: RunOpts = {}) {
-  if (ENGINE === 'devkit') {
-    try {
-      return await runWithDevkit(definition, workflowId, opts);
-    } catch (e: any) {
-      const boardId = String(definition?.boardId || 'workflow-system');
-      const runId = opts.runId || `wf-${Date.now()}`;
-      appendEvent(boardId, runId, 'WORKFLOW_ENGINE_FALLBACK', {
-        workflow_id: workflowId,
-        preferred_engine: 'devkit',
-        fallback_engine: 'local',
-        reason: e?.message || 'devkit unavailable'
-      });
-    }
-  }
+  'use workflow';
   return executeLocalFlow(definition, workflowId, opts);
 }
 
 export async function resumeWorkflow(definition: any, workflowId: string, runId: string, decision: 'YES' | 'NO' | 'REWRITE', approver = 'human') {
+  'use workflow';
   const boardId = String(definition?.boardId || 'workflow-system');
-  appendEvent(boardId, runId, 'WORKFLOW_HUMAN_APPROVAL_DECISION', { workflow_id: workflowId, decision, approver });
+  await recordHumanDecision(boardId, runId, workflowId, decision, approver);
 
   if (decision === 'NO') {
-    appendEvent(boardId, runId, 'WORKFLOW_BLOCKED_BY_HUMAN', { workflow_id: workflowId, approver });
-    updateRunStatus(runId, 'BLOCKED');
-    updateWorkflowRunStatus(runId, 'BLOCKED');
     return { runId, boardId, blocked: true };
   }
 
   if (decision === 'REWRITE') {
-    appendEvent(boardId, runId, 'WORKFLOW_REVISION_REQUESTED', { workflow_id: workflowId, approver });
-    updateRunStatus(runId, 'REVISION_REQUESTED');
-    updateWorkflowRunStatus(runId, 'REVISION_REQUESTED');
     return { runId, boardId, revisionRequested: true };
-  }
-
-  const link = getWorkflowRunLink(runId);
-  if (link?.engine === 'devkit') {
-    try {
-      return await resumeWithDevkit(definition, workflowId, runId, approver);
-    } catch {
-      // fallback below
-    }
   }
 
   const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HUMAN_APPROVAL', limit: 1 }) as any[];
@@ -88,77 +63,29 @@ export async function resumeWorkflow(definition: any, workflowId: string, runId:
   return executeLocalFlow(definition, workflowId, { runId, startIndex, context: { hitlDecision: decision, approvedBy: approver } });
 }
 
-async function runWithDevkit(definition: any, workflowId: string, opts: RunOpts = {}) {
-  const boardId = String(definition?.boardId || 'workflow-system');
-  const runId = ensureRun(boardId, workflowId, opts.runId);
+/**
+ * Step: persist the human approval decision and update run status.
+ */
+async function recordHumanDecision(boardId: string, runId: string, workflowId: string, decision: string, approver: string) {
+  'use step';
+  appendEvent(boardId, runId, 'WORKFLOW_HUMAN_APPROVAL_DECISION', { workflow_id: workflowId, decision, approver });
 
-  const importer = new Function('m', 'return import(m)') as (m: string) => Promise<any>;
-  const api = await importer('workflow/api');
-  const jobs = await importer(new URL('./devkit-job.js', import.meta.url).href);
-
-  const start = api?.start;
-  const job = jobs?.devkitRunWorkflowJob;
-  if (typeof start !== 'function' || typeof job !== 'function') {
-    throw new Error('workflow/api start or devkit job not available');
+  if (decision === 'NO') {
+    appendEvent(boardId, runId, 'WORKFLOW_BLOCKED_BY_HUMAN', { workflow_id: workflowId, approver });
+    updateRunStatus(runId, 'BLOCKED');
+    updateWorkflowRunStatus(runId, 'BLOCKED');
+  } else if (decision === 'REWRITE') {
+    appendEvent(boardId, runId, 'WORKFLOW_REVISION_REQUESTED', { workflow_id: workflowId, approver });
+    updateRunStatus(runId, 'REVISION_REQUESTED');
+    updateWorkflowRunStatus(runId, 'REVISION_REQUESTED');
   }
-
-  const started = await start(job, [{
-    definition,
-    workflowId,
-    runId,
-    startIndex: opts.startIndex || 0,
-    context: opts.context || {}
-  }]);
-
-  const externalRunId = started?.id || started?.runId || started?.workflowRunId || `devkit-${runId}`;
-  upsertWorkflowRunLink(runId, workflowId, 'devkit', String(externalRunId), { startIndex: opts.startIndex || 0 });
-  appendEvent(boardId, runId, 'WORKFLOW_ENGINE_SELECTED', {
-    workflow_id: workflowId,
-    engine: 'devkit',
-    external_run_id: externalRunId,
-    api_loaded: true
-  });
-
-  return { runId, boardId, engine: 'devkit', externalRunId };
 }
 
-async function resumeWithDevkit(definition: any, workflowId: string, runId: string, approver: string) {
-  const boardId = String(definition?.boardId || 'workflow-system');
-  const link = getWorkflowRunLink(runId);
-  appendEvent(boardId, runId, 'WORKFLOW_ENGINE_RESUME', {
-    workflow_id: workflowId,
-    engine: 'devkit',
-    external_run_id: link?.external_run_id || null,
-    approver
-  });
-
-  const waits = listEvents({ runId, type: 'WORKFLOW_WAITING_HUMAN_APPROVAL', limit: 1 }) as any[];
-  const waitPayload = waits[0]?.payload_json ? JSON.parse(String(waits[0].payload_json)) : null;
-  const startIndex = typeof waitPayload?.node_index === 'number' ? waitPayload.node_index + 1 : 0;
-
-  const importer = new Function('m', 'return import(m)') as (m: string) => Promise<any>;
-  const api = await importer('workflow/api');
-  const jobs = await importer(new URL('./devkit-job.js', import.meta.url).href);
-  const start = api?.start;
-  const job = jobs?.devkitRunWorkflowJob;
-  if (typeof start !== 'function' || typeof job !== 'function') {
-    throw new Error('workflow/api start or devkit job not available');
-  }
-
-  const resumed = await start(job, [{
-    definition,
-    workflowId,
-    runId,
-    startIndex,
-    context: { hitlDecision: 'YES', approvedBy: approver }
-  }]);
-
-  const externalRunId = resumed?.id || resumed?.runId || resumed?.workflowRunId || link?.external_run_id || `devkit-${runId}`;
-  upsertWorkflowRunLink(runId, workflowId, 'devkit', String(externalRunId), { startIndex, resumedBy: approver });
-  return { runId, boardId, engine: 'devkit', externalRunId, resumed: true };
-}
-
+/**
+ * Step: ensure a run record exists in the DB, creating it if needed.
+ */
 function ensureRun(boardId: string, workflowId: string, runId?: string) {
+  'use step';
   const existing = runId ? getRun(runId) : null;
   if (existing && runId) return runId;
   const created = createRun(boardId, { workflow_id: workflowId, source: 'workflow' }, runId) as any;
@@ -167,92 +94,134 @@ function ensureRun(boardId: string, workflowId: string, runId?: string) {
   return id;
 }
 
-export async function executeLocalFlow(definition: any, workflowId: string, opts: RunOpts = {}, link?: { engine: string; externalRunId?: string | null }) {
+/**
+ * Core local flow executor — iterates workflow nodes using durable steps.
+ * Each node execution is wrapped in a "use step" function for automatic
+ * retries, suspension, and observability via the Workflow SDK.
+ */
+export async function executeLocalFlow(definition: any, workflowId: string, opts: RunOpts = {}) {
+  'use workflow';
   const boardId = String(definition?.boardId || 'workflow-system');
-  const runId = ensureRun(boardId, workflowId, opts.runId);
-  const existingLink = getWorkflowRunLink(runId);
-  const engine = link?.engine || existingLink?.engine || 'local';
-  const externalRunId = link?.externalRunId || existingLink?.external_run_id || null;
-  upsertWorkflowRunLink(runId, workflowId, engine, externalRunId, { startIndex: opts.startIndex || 0 });
+  const runId = await ensureRun(boardId, workflowId, opts.runId);
+  await linkRun(runId, workflowId, opts.startIndex || 0);
 
   const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
   const startIndex = opts.startIndex ?? 0;
   const context: Record<string, any> = { ...(opts.context || {}) };
 
-  appendEvent(boardId, runId, startIndex === 0 ? 'WORKFLOW_STARTED' : 'WORKFLOW_RESUMED', {
-    workflow_id: workflowId,
-    engine,
-    external_run_id: externalRunId,
-    node_count: nodes.length,
-    start_index: startIndex
-  });
+  await emitWorkflowLifecycle(boardId, runId, workflowId, startIndex, nodes.length);
 
   for (let i = startIndex; i < nodes.length; i++) {
     const node = nodes[i];
     const startedAt = Date.now();
-    appendEvent(boardId, runId, 'WORKFLOW_NODE_STARTED', {
-      workflow_id: workflowId,
-      engine,
-      external_run_id: externalRunId,
-      external_step_id: externalRunId ? `${externalRunId}:step:${i}:start` : null,
-      node_index: i,
-      node_id: node.id,
-      node_type: node.type,
-      label: node.label
-    });
+    await emitNodeStarted(boardId, runId, workflowId, i, node);
 
     try {
-      const output = await executeNode(node, context, { boardId, runId, workflowId });
+      const output = await executeNodeStep(node, context, { boardId, runId, workflowId });
       context[node.id] = output;
 
-      appendEvent(boardId, runId, 'WORKFLOW_NODE_EXECUTED', {
-        workflow_id: workflowId,
-        engine,
-        external_run_id: externalRunId,
-        external_step_id: externalRunId ? `${externalRunId}:step:${i}:done` : null,
-        node_index: i,
-        node_id: node.id,
-        node_type: node.type,
-        duration_ms: Date.now() - startedAt,
-        output
-      });
+      await emitNodeExecuted(boardId, runId, workflowId, i, node, Date.now() - startedAt, output);
 
       if (output?.pause === true && (node.type === 'hitl' || node.type === 'group')) {
-        appendEvent(boardId, runId, 'WORKFLOW_WAITING_HUMAN_APPROVAL', {
-          workflow_id: workflowId,
-          engine,
-          external_run_id: externalRunId,
-          external_step_id: externalRunId ? `${externalRunId}:step:${i}:wait` : null,
-          node_index: i,
-          node_id: node.id,
-          reason: 'Human approval required'
-        });
-        updateRunStatus(runId, 'WAITING_HUMAN');
-        updateWorkflowRunStatus(runId, 'WAITING_HUMAN');
-        upsertWorkflowRunLink(runId, workflowId, engine, externalRunId, { waitNodeIndex: i, contextKeys: Object.keys(context) });
+        await emitWaitingHuman(boardId, runId, workflowId, i, node);
+        upsertWorkflowRunLink(runId, workflowId, 'local', null, { waitNodeIndex: i, contextKeys: Object.keys(context) });
+
+        // Use Workflow SDK's sleep to durably suspend instead of returning early.
+        // The workflow will resume when a human approval triggers resumeWorkflow().
+        await sleep('30d');
+
         return { runId, boardId, paused: true, waitNodeIndex: i };
       }
     } catch (error: any) {
-      appendEvent(boardId, runId, 'WORKFLOW_NODE_FAILED', {
-        workflow_id: workflowId,
-        engine,
-        external_run_id: externalRunId,
-        external_step_id: externalRunId ? `${externalRunId}:step:${i}:fail` : null,
-        node_index: i,
-        node_id: node.id,
-        node_type: node.type,
-        error: error?.message || 'unknown'
-      });
-      updateRunStatus(runId, 'BLOCKED');
-      updateWorkflowRunStatus(runId, 'BLOCKED');
-      return { runId, boardId, failed: true, error: error?.message || 'unknown' };
+      await emitNodeFailed(boardId, runId, workflowId, i, node, error);
+      // FatalError prevents automatic retry by the SDK
+      throw new FatalError(`Node ${node.id} (${node.type}) failed: ${error?.message || 'unknown'}`);
     }
   }
 
-  appendEvent(boardId, runId, 'WORKFLOW_COMPLETED', { workflow_id: workflowId, engine, external_run_id: externalRunId, executed: nodes.length });
+  await emitWorkflowCompleted(boardId, runId, workflowId, nodes.length);
+  return { runId, boardId, completed: true };
+}
+
+// ── Durable step wrappers for DB side-effects ──
+
+async function linkRun(runId: string, workflowId: string, startIndex: number) {
+  'use step';
+  upsertWorkflowRunLink(runId, workflowId, 'local', null, { startIndex });
+}
+
+async function emitWorkflowLifecycle(boardId: string, runId: string, workflowId: string, startIndex: number, nodeCount: number) {
+  'use step';
+  appendEvent(boardId, runId, startIndex === 0 ? 'WORKFLOW_STARTED' : 'WORKFLOW_RESUMED', {
+    workflow_id: workflowId,
+    engine: 'workflow-sdk',
+    node_count: nodeCount,
+    start_index: startIndex
+  });
+}
+
+async function emitNodeStarted(boardId: string, runId: string, workflowId: string, index: number, node: any) {
+  'use step';
+  appendEvent(boardId, runId, 'WORKFLOW_NODE_STARTED', {
+    workflow_id: workflowId,
+    node_index: index,
+    node_id: node.id,
+    node_type: node.type,
+    label: node.label
+  });
+}
+
+async function emitNodeExecuted(boardId: string, runId: string, workflowId: string, index: number, node: any, durationMs: number, output: any) {
+  'use step';
+  appendEvent(boardId, runId, 'WORKFLOW_NODE_EXECUTED', {
+    workflow_id: workflowId,
+    node_index: index,
+    node_id: node.id,
+    node_type: node.type,
+    duration_ms: durationMs,
+    output
+  });
+}
+
+async function emitWaitingHuman(boardId: string, runId: string, workflowId: string, index: number, node: any) {
+  'use step';
+  appendEvent(boardId, runId, 'WORKFLOW_WAITING_HUMAN_APPROVAL', {
+    workflow_id: workflowId,
+    node_index: index,
+    node_id: node.id,
+    reason: 'Human approval required'
+  });
+  updateRunStatus(runId, 'WAITING_HUMAN');
+  updateWorkflowRunStatus(runId, 'WAITING_HUMAN');
+}
+
+async function emitNodeFailed(boardId: string, runId: string, workflowId: string, index: number, node: any, error: any) {
+  'use step';
+  appendEvent(boardId, runId, 'WORKFLOW_NODE_FAILED', {
+    workflow_id: workflowId,
+    node_index: index,
+    node_id: node.id,
+    node_type: node.type,
+    error: error?.message || 'unknown'
+  });
+  updateRunStatus(runId, 'BLOCKED');
+  updateWorkflowRunStatus(runId, 'BLOCKED');
+}
+
+async function emitWorkflowCompleted(boardId: string, runId: string, workflowId: string, nodeCount: number) {
+  'use step';
+  appendEvent(boardId, runId, 'WORKFLOW_COMPLETED', { workflow_id: workflowId, engine: 'workflow-sdk', executed: nodeCount });
   updateRunStatus(runId, 'APPROVED');
   updateWorkflowRunStatus(runId, 'APPROVED');
-  return { runId, boardId, completed: true };
+}
+
+/**
+ * Step wrapper around executeNode — makes each node execution a durable step
+ * so the SDK can retry on transient failures and track each node independently.
+ */
+async function executeNodeStep(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }) {
+  'use step';
+  return executeNode(node, context, ids);
 }
 
 async function executeNode(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }) {

@@ -39,3 +39,4 @@ pnpm-debug.log*
 .temp/
 .cache/
 coverage/
+.dev-logs/
