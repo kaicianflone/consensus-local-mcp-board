@@ -390,7 +390,7 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   if (node.type === 'agent') {
     const agentCount = Math.max(1, Math.min(10, Number(node.config?.agentCount ?? 3)));
     const personaMode = node.config?.personaMode || 'auto';
-    const model = node.config?.model || 'gpt-4o-mini';
+    const model = node.config?.model || 'gpt-5.4';
     const temperature = Number(node.config?.temperature ?? 0);
     const systemPrompt = node.config?.systemPrompt || '';
 

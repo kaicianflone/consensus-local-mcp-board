@@ -18,12 +18,19 @@ const CHAT_ADAPTERS = [
 ];
 
 const AI_MODELS = [
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-  { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
-  { value: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet' },
-  { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+  // OpenAI
+  { value: 'gpt-5.4', label: 'GPT-5.4' },
+  { value: 'gpt-5.4-pro', label: 'GPT-5.4 Pro' },
+  { value: 'gpt-5.2', label: 'GPT-5.2' },
+  { value: 'gpt-5.1', label: 'GPT-5.1' },
+  { value: 'gpt-5', label: 'GPT-5' },
+  { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+  { value: 'gpt-5-nano', label: 'GPT-5 Nano' },
+  { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+  // Anthropic
+  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
 ];
 
 interface AgentsPanelProps {
@@ -38,7 +45,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
   const [agentStep, setAgentStep] = useState<'choose' | 'internal' | 'external'>('choose');
   const [humanName, setHumanName] = useState('');
 
-  const [internalForm, setInternalForm] = useState({ name: '', model: 'gpt-4o-mini', systemPrompt: '', temperature: '0.0' });
+  const [internalForm, setInternalForm] = useState({ name: '', model: 'gpt-5.4', systemPrompt: '', temperature: '0.0' });
   const [externalForm, setExternalForm] = useState({ name: '', chatAdapter: '', chatHandle: '' });
   const [newApiKey, setNewApiKey] = useState('');
 
@@ -64,7 +71,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
 
   function openAddAgent() {
     setAgentStep('choose');
-    setInternalForm({ name: '', model: 'gpt-4o-mini', systemPrompt: '', temperature: '0.0' });
+    setInternalForm({ name: '', model: 'gpt-5.4', systemPrompt: '', temperature: '0.0' });
     setExternalForm({ name: '', chatAdapter: '', chatHandle: '' });
     setNewApiKey('');
     setShowAddAgent(true);
@@ -147,7 +154,7 @@ export function AgentsPanel({ boardId, workflowNodes = [] }: AgentsPanelProps) {
       role: p.role || 'voter',
       agentType: meta.agentType || '',
       agentRegistryId: meta.agentRegistryId || '',
-      model: meta.model || 'gpt-4o-mini',
+      model: meta.model || 'gpt-5.4',
       systemPrompt: meta.systemPrompt || '',
       temperature: meta.temperature ?? 0,
       chatAdapter: meta.chatAdapter || '',

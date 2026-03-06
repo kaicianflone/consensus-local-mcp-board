@@ -155,7 +155,7 @@ const agentNode = {
   id: 'agent-review',
   type: 'agent',
   label: 'Agent Review',
-  config: { agentCount: 3, personaMode: 'auto', model: 'gpt-4o-mini' },
+  config: { agentCount: 3, personaMode: 'auto', model: 'gpt-5.4' },
 };
 
 const triggerNode = {
