@@ -42,7 +42,7 @@ export async function evaluateWithAiSdk(
   options?: { agentCount?: number; personas?: AgentPersona[]; model?: string; temperature?: number; systemPrompt?: string }
 ): Promise<AiVote[]> {
   const apiKey = getCredential(db, 'openai', 'api_key') || process.env.OPENAI_API_KEY;
-  const modelId = options?.model || process.env.AI_MODEL || 'gpt-4o-mini';
+  const modelId = options?.model || process.env.AI_MODEL || 'gpt-5.4';
   const agentCount = options?.agentCount || 1;
   const temperature = options?.temperature ?? 0;
 

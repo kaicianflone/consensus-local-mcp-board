@@ -670,7 +670,7 @@ const GROUP_CHILD_TYPES: { type: NodeType; label: string }[] = [
 ];
 
 function childDefaults(type: NodeType): Record<string, any> {
-  if (type === 'agent') return { model: 'gpt-4o-mini', temperature: 0, agentCount: 3, personaNames: '', systemPrompt: '' };
+  if (type === 'agent') return { model: 'gpt-5.4', temperature: 0, agentCount: 3, personaNames: '', systemPrompt: '' };
   if (type === 'hitl') return { promptMode: 'yes-no', timeoutSec: 900 };
   if (type === 'guard') return { guardType: 'code_merge', quorum: 0.7, riskThreshold: 0.7 };
   return { action: 'noop' };
