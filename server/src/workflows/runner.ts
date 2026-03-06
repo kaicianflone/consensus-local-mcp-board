@@ -1,4 +1,5 @@
-import { sleep, FatalError } from 'workflow';
+import { FatalError } from 'workflow';
+import { execFileSync } from 'node:child_process';
 import {
   appendEvent,
   createRun,
@@ -17,6 +18,48 @@ import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
 import { sendHumanApprovalPrompt, type ChatPrompt } from '../adapters/chat-sdk.js';
 import { evaluateViaConsensusTools, resolveVerdictsViaBoard, computeReputationFromLedger, type AgentVerdict } from '../adapters/consensus-tools.js';
 import { registerPendingApproval } from '../engine/hitl-tracker.js';
+
+// ── GitHub PR fetcher via gh CLI ──
+
+function fetchGitHubPR(repo: string, branch: string): { pr: any; diff: string; files: string[] } | null {
+  try {
+    // Find the most recent open PR targeting the branch
+    const prListRaw = execFileSync('gh', [
+      'pr', 'list', '--repo', repo, '--base', branch, '--state', 'open',
+      '--json', 'number,title,body,author,headRefName,additions,deletions,changedFiles,url',
+      '--limit', '1'
+    ], { encoding: 'utf8', timeout: 15000 }).trim();
+    const prs = JSON.parse(prListRaw || '[]');
+    if (!prs.length) return null;
+
+    const pr = prs[0];
+    const prNumber = pr.number;
+
+    // Fetch the diff (truncate to 15k chars to avoid blowing up token context)
+    let diff = '';
+    try {
+      diff = execFileSync('gh', [
+        'pr', 'diff', String(prNumber), '--repo', repo
+      ], { encoding: 'utf8', timeout: 15000 }).trim();
+      if (diff.length > 15000) diff = diff.slice(0, 15000) + '\n... (diff truncated)';
+    } catch { /* diff fetch is best-effort */ }
+
+    // Fetch changed file list
+    let files: string[] = [];
+    try {
+      const filesRaw = execFileSync('gh', [
+        'pr', 'view', String(prNumber), '--repo', repo,
+        '--json', 'files', '--jq', '.files[].path'
+      ], { encoding: 'utf8', timeout: 10000 }).trim();
+      files = filesRaw ? filesRaw.split('\n') : [];
+    } catch { /* file list is best-effort */ }
+
+    return { pr, diff, files };
+  } catch (e: any) {
+    console.warn(`[trigger] Failed to fetch GitHub PR for ${repo}: ${e?.message}`);
+    return null;
+  }
+}
 
 const REVIEWER_ARCHETYPES = [
   'security-reviewer',
@@ -139,9 +182,10 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
         await emitWaitingHuman(boardId, runId, workflowId, i, node);
         upsertWorkflowRunLink(runId, workflowId, 'local', null, { waitNodeIndex: i, contextKeys: Object.keys(context) });
 
-        // Use Workflow SDK's sleep to durably suspend instead of returning early.
-        // The workflow will resume when a human approval triggers resumeWorkflow().
-        await sleep('30d');
+        // Local mode: persist state and return paused response.
+        // Resume via POST /api/workflow-runs/:runId/approve which calls resumeWorkflow().
+        updateRunStatus(runId, 'WAITING_HUMAN');
+        updateWorkflowRunStatus(runId, 'WAITING_HUMAN');
 
         return { runId, boardId, paused: true, waitNodeIndex: i };
       }
@@ -301,7 +345,34 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   if (node.type === 'trigger') {
     const source = node.config?.source || node.config?.mode || 'manual';
     if (String(source).startsWith('github.')) {
-      return { ok: true, trigger: source, provider: node.config?.provider || 'github-mcp', repo: node.config?.repo || '', branch: node.config?.branch || 'main' };
+      const repo = node.config?.repo || '';
+      const branch = node.config?.branch || 'main';
+      const base = { ok: true, trigger: source, provider: node.config?.provider || 'github-mcp', repo, branch };
+
+      // Fetch actual PR data when a repo is configured
+      if (repo) {
+        const prData = fetchGitHubPR(repo, branch);
+        if (prData) {
+          return {
+            ...base,
+            pr: {
+              number: prData.pr.number,
+              title: prData.pr.title,
+              body: prData.pr.body || '',
+              author: prData.pr.author?.login || '',
+              headBranch: prData.pr.headRefName || '',
+              url: prData.pr.url || '',
+              additions: prData.pr.additions || 0,
+              deletions: prData.pr.deletions || 0,
+              changedFiles: prData.pr.changedFiles || 0,
+            },
+            files: prData.files,
+            diff: prData.diff,
+          };
+        }
+      }
+
+      return base;
     }
     if (String(source).startsWith('chat.')) {
       return {
@@ -404,10 +475,20 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
       // Sync participant reputation from ledger after resolution
       syncReputationFromLedger(ids.boardId, verdicts);
 
+      // Post-resolution escalation: blockAboveRisk overrides REWRITE → BLOCK
+      // when combined risk exceeds the guard's hard ceiling
+      let finalDecision = result.decision;
+      let finalReasons = [result.reason];
+      const blockAboveRisk = Number(node.config?.blockAboveRisk ?? 1.0);
+      if (finalDecision === 'REWRITE' && result.combinedRisk > blockAboveRisk) {
+        finalDecision = 'BLOCK';
+        finalReasons = [`REWRITE escalated to BLOCK: risk ${result.combinedRisk.toFixed(3)} exceeds blockAboveRisk ${blockAboveRisk}`, ...finalReasons];
+      }
+
       return {
-        decision: result.decision,
+        decision: finalDecision,
         risk: result.combinedRisk,
-        reasons: [result.reason],
+        reasons: finalReasons,
         consensus: result.meta || null,
         boardResolution: true,
         _boardResult: result,
@@ -438,8 +519,14 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   if (node.type === 'hitl') {
     const guardDecision = Object.values(context).find((v: any) => v?.decision && v?.risk !== undefined) as any;
     const risk = Number(guardDecision?.risk ?? 0.5);
+    const decision = String(guardDecision?.decision || '');
     const threshold = Number(node.config?.threshold ?? 0.7);
-    if (risk < threshold) return { pause: false, skipped: true, risk, threshold };
+
+    // Always trigger HITL for REWRITE or BLOCK decisions regardless of threshold
+    // Only skip if risk is below threshold AND decision is not REWRITE/BLOCK
+    if (risk < threshold && decision !== 'REWRITE' && decision !== 'BLOCK') {
+      return { pause: false, skipped: true, risk, threshold, decision };
+    }
 
     const boardParticipants = listParticipants(ids.boardId) as any[];
     const chatLinkedParticipants = boardParticipants

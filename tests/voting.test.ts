@@ -120,14 +120,61 @@ describe('Voting', () => {
       expect(result.quorumMet).toBe(false);
     });
 
-    it('should BLOCK when high-risk votes in split scenario', () => {
+    it('should BLOCK when high-risk votes with NO in split scenario', () => {
       const votes = [
         { evaluator: 'a', vote: 'YES' as const, reason: '', risk: 0.8, weight: 0.5, confidence: 1 },
         { evaluator: 'b', vote: 'NO' as const, reason: '', risk: 0.9, weight: 0.5, confidence: 1 },
       ];
       const result = computeDecision(votes, defaultPolicy);
-      // combinedRisk = (0.8*0.5 + 0.9*0.5) / 1.0 = 0.85 > 0.7 → BLOCK
+      // combinedRisk = (0.8*0.5 + 0.9*0.5) / 1.0 = 0.85 > 0.7, has NO → BLOCK
       expect(result.decision).toBe('BLOCK');
+    });
+
+    it('should REWRITE when all voters vote REWRITE with high risk (no NOs)', () => {
+      const votes = [
+        { evaluator: 'a', vote: 'REWRITE' as const, reason: 'Fixable', risk: 0.85, weight: 1, confidence: 1 },
+        { evaluator: 'b', vote: 'REWRITE' as const, reason: 'Needs work', risk: 0.9, weight: 1, confidence: 1 },
+        { evaluator: 'c', vote: 'REWRITE' as const, reason: 'Missing tests', risk: 0.8, weight: 1, confidence: 1 },
+      ];
+      const result = computeDecision(votes, defaultPolicy);
+      // combinedRisk = 0.85 > 0.7, no NOs, rewrite ratio = 1.0 > 0.5 → REWRITE
+      expect(result.decision).toBe('REWRITE');
+      expect(result.tally.rewrite).toBe(3);
+      expect(result.tally.no).toBe(0);
+    });
+
+    it('should BLOCK when mix of NO and REWRITE with high risk', () => {
+      const votes = [
+        { evaluator: 'a', vote: 'NO' as const, reason: 'Reject', risk: 0.9, weight: 1, confidence: 1 },
+        { evaluator: 'b', vote: 'REWRITE' as const, reason: 'Fixable', risk: 0.85, weight: 1, confidence: 1 },
+        { evaluator: 'c', vote: 'REWRITE' as const, reason: 'Needs work', risk: 0.8, weight: 1, confidence: 1 },
+      ];
+      const result = computeDecision(votes, defaultPolicy);
+      // combinedRisk > 0.7, has NO → BLOCK (NO overrides REWRITE)
+      expect(result.decision).toBe('BLOCK');
+    });
+
+    it('should REWRITE when majority REWRITE with minority YES and high risk', () => {
+      const votes = [
+        { evaluator: 'a', vote: 'REWRITE' as const, reason: 'Fix auth', risk: 0.85, weight: 1, confidence: 1 },
+        { evaluator: 'b', vote: 'REWRITE' as const, reason: 'Fix validation', risk: 0.8, weight: 1, confidence: 1 },
+        { evaluator: 'c', vote: 'YES' as const, reason: 'Looks ok', risk: 0.3, weight: 1, confidence: 1 },
+      ];
+      const result = computeDecision(votes, defaultPolicy);
+      // combinedRisk ≈ 0.65, which is <= 0.7, so it falls to quorum check
+      // weightedYesRatio = 1/3 = 0.33 < 0.7 → REQUIRE_HUMAN
+      expect(result.decision).toBe('REQUIRE_HUMAN');
+    });
+
+    it('should REWRITE when 2 REWRITE + 1 YES with risk above threshold', () => {
+      const votes = [
+        { evaluator: 'a', vote: 'REWRITE' as const, reason: 'Fix auth', risk: 0.9, weight: 1, confidence: 1 },
+        { evaluator: 'b', vote: 'REWRITE' as const, reason: 'Fix validation', risk: 0.85, weight: 1, confidence: 1 },
+        { evaluator: 'c', vote: 'YES' as const, reason: 'Minor issues', risk: 0.5, weight: 1, confidence: 1 },
+      ];
+      const result = computeDecision(votes, defaultPolicy);
+      // combinedRisk = (0.9+0.85+0.5)/3 = 0.75 > 0.7, no NOs, rewriteRatio = 2/3 = 0.67 > 0.5 → REWRITE
+      expect(result.decision).toBe('REWRITE');
     });
 
     it('should REQUIRE_HUMAN when YES ratio barely misses quorum', () => {
