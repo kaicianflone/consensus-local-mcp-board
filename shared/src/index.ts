@@ -182,8 +182,21 @@ export function computeDecision(votes: WeightedVote[], policy: PolicyMetadata, w
   const weightedYesRatio = tally.totalWeight > 0 ? tally.weightedYes / tally.totalWeight : 0;
   const quorumMet = reachesQuorum(tally, policy.quorum);
 
-  // Step 1: Combined risk exceeds threshold → BLOCK
+  // Step 1: Combined risk exceeds threshold
   if (combinedRisk > policy.riskThreshold) {
+    // Step 1a: Any hard NO vote → BLOCK (at least one agent sees this as unacceptable)
+    if (tally.no > 0) {
+      return { decision: 'BLOCK', tally, quorumMet, weightedYesRatio, combinedRisk };
+    }
+
+    // Step 1b: Majority voted REWRITE (no NOs) → REWRITE
+    // Agents see fixable issues, not fundamental rejection
+    const rewriteRatio = tally.totalWeight > 0 ? tally.weightedRewrite / tally.totalWeight : 0;
+    if (tally.rewrite > 0 && rewriteRatio > 0.5) {
+      return { decision: 'REWRITE', tally, quorumMet, weightedYesRatio, combinedRisk };
+    }
+
+    // Step 1c: High risk but no clear REWRITE or NO signal → BLOCK
     return { decision: 'BLOCK', tally, quorumMet, weightedYesRatio, combinedRisk };
   }
 

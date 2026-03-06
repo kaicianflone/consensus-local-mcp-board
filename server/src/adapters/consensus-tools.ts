@@ -111,26 +111,37 @@ export function writeLedgerOutcomes(
   root: string,
   jobId: string,
   verdicts: AgentVerdict[],
-  finalDecision: 'ALLOW' | 'BLOCK' | 'REQUIRE_HUMAN',
+  finalDecision: 'ALLOW' | 'BLOCK' | 'REWRITE' | 'REQUIRE_HUMAN',
 ): void {
   const PAYOUT_AMOUNT = 0.1;
   const SLASH_AMOUNT = -0.05;
 
   // Map decision → which verdict aligns
-  // ALLOW → YES aligned, NO/REWRITE opposed
-  // BLOCK → NO aligned, YES/REWRITE opposed
+  // ALLOW         → YES aligned, NO/REWRITE opposed
+  // BLOCK         → NO aligned, YES opposed, REWRITE neutral (partial credit)
+  // REWRITE       → REWRITE aligned, YES opposed, NO neutral (identified risk but over-rejected)
   // REQUIRE_HUMAN → REWRITE aligned, YES/NO neutral (no slash)
   for (const v of verdicts) {
     let aligned: boolean;
+    let neutral = false;
+
     if (finalDecision === 'ALLOW') {
       aligned = v.verdict === 'YES';
     } else if (finalDecision === 'BLOCK') {
       aligned = v.verdict === 'NO';
+      // REWRITE voters caught the risk — partial credit, not slashed
+      if (v.verdict === 'REWRITE') { neutral = true; }
+    } else if (finalDecision === 'REWRITE') {
+      aligned = v.verdict === 'REWRITE';
+      // NO voters identified risk but over-rejected — neutral, not slashed
+      if (v.verdict === 'NO') { neutral = true; }
     } else {
       // REQUIRE_HUMAN — REWRITE is aligned, others are neutral
       aligned = v.verdict === 'REWRITE';
       if (!aligned) continue; // no slash for non-REWRITE on REQUIRE_HUMAN
     }
+
+    if (neutral) continue; // no payout or slash for neutral verdicts
 
     appendLedger(root, {
       id: localRandId(aligned ? 'pay' : 'slash'),
@@ -476,7 +487,7 @@ export type AgentVerdict = {
 };
 
 export type BoardResolutionResult = {
-  decision: 'ALLOW' | 'BLOCK' | 'REQUIRE_HUMAN';
+  decision: 'ALLOW' | 'BLOCK' | 'REWRITE' | 'REQUIRE_HUMAN';
   combinedRisk: number;
   weightedYesRatio: number;
   quorumMet: boolean;
@@ -752,11 +763,13 @@ function resolveVerdictsLocally(
     options: {},
   }, weightingMode);
 
-  const decision = result.decision === 'REWRITE' ? 'REQUIRE_HUMAN' as const : result.decision as 'ALLOW' | 'BLOCK' | 'REQUIRE_HUMAN';
+  const decision = result.decision as 'ALLOW' | 'BLOCK' | 'REWRITE' | 'REQUIRE_HUMAN';
 
   let reason: string;
   if (decision === 'BLOCK') {
     reason = `Combined risk ${result.combinedRisk.toFixed(3)} exceeds threshold ${riskThreshold}`;
+  } else if (decision === 'REWRITE') {
+    reason = `Agents recommend rewrite (risk ${result.combinedRisk.toFixed(3)}, ${result.tally.rewrite} REWRITE votes, 0 NO votes)`;
   } else if (decision === 'REQUIRE_HUMAN') {
     reason = result.quorumMet
       ? `Weighted YES ratio ${result.weightedYesRatio.toFixed(3)} below quorum ${quorum}`
