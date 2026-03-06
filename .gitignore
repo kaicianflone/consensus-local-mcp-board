@@ -10,6 +10,7 @@ node_modules/
 
 # local runtime/state
 /data/
+server/data/
 *.db
 *.db-journal
 *.sqlite

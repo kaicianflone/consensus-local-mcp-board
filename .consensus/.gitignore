@@ -1,1 +1,6 @@
 .env
+.env.*
+local-board/
+*.db
+*.sqlite
+*.sqlite3
