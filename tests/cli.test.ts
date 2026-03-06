@@ -26,11 +26,11 @@ describe('MCP CLI', () => {
       expect(content.startsWith('#!/usr/bin/env node')).toBe(true);
     });
 
-    it('should import from dist/server.js', () => {
+    it('should fork server/dist/index.js and mcp/server.js', () => {
       const cliPath = path.resolve('bin/cli.js');
       const content = fs.readFileSync(cliPath, 'utf-8');
-      expect(content).toContain('../dist/server.js');
-      expect(content).toContain('startServer');
+      expect(content).toContain("'server', 'dist', 'index.js'");
+      expect(content).toContain("'server', 'dist', 'mcp', 'server.js'");
     });
   });
 

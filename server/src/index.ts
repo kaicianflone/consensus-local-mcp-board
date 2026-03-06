@@ -995,7 +995,20 @@ app.get('/api/hitl/pending', (_req, res) => {
   }
 });
 
-app.listen(4010, '127.0.0.1', () => {
-  console.log('local-mcp-board server on http://127.0.0.1:4010');
+// ── Production: serve built web UI ──
+if (process.env.NODE_ENV === 'production') {
+  const webDist = path.join(import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname), '..', '..', 'web', 'dist');
+  if (existsSync(webDist)) {
+    app.use(express.static(webDist));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(webDist, 'index.html'));
+    });
+    console.log(`Serving UI from ${webDist}`);
+  }
+}
+
+const PORT = parseInt(process.env.PORT || '4010', 10);
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`local-mcp-board on http://127.0.0.1:${PORT}`);
   bootstrapConsensusTools();
 });
