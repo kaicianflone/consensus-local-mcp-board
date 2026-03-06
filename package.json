@@ -1,7 +1,19 @@
 {
   "name": "consensus-local-mcp-board",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first MCP runtime for multi-agent consensus guard workflows",
   "type": "module",
+  "bin": {
+    "consensus-local-mcp-board": "bin/cli.js"
+  },
+  "files": [
+    "bin/cli.js",
+    "server/dist/",
+    "shared/dist/",
+    "web/dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "workspaces": [
     "shared",
     "server",
@@ -15,9 +27,30 @@
     "start:web": "npm --workspace web run dev -- --open",
     "mcp:dev": "npm --workspace server run mcp:dev",
     "build": "npm --workspace shared run build && npm --workspace server run build && npm --workspace web run build",
+    "prepublishOnly": "npm run build && npm test",
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "keywords": [
+    "mcp",
+    "consensus",
+    "guard",
+    "workflow",
+    "multi-agent",
+    "hitl",
+    "human-in-the-loop",
+    "code-review",
+    "voting",
+    "audit",
+    "sqlite"
+  ],
+  "author": "Kai Cianflone",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaicianflone/consensus-local-mcp-board.git"
+  },
+  "homepage": "https://github.com/kaicianflone/consensus-local-mcp-board#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "zod": "^3.23.8"

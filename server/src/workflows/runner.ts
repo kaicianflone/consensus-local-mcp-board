@@ -163,7 +163,7 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
     await emitNodeStarted(boardId, runId, workflowId, i, node);
 
     try {
-      const output = await executeNodeStep(node, context, { boardId, runId, workflowId });
+      const output: any = await executeNodeStep(node, context, { boardId, runId, workflowId });
       context[node.id] = output;
 
       // Guard node emits board resolution scores via emitBoardResolution step (below)

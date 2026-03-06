@@ -6,7 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "dev:nitro": "nitro dev",
     "mcp:dev": "tsx src/mcp/server.ts --stdio",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp -r src/db/migrations dist/db/migrations",
     "build:nitro": "nitro build",
     "workflow:web": "npx workflow web",
     "workflow:inspect": "npx workflow inspect runs"
