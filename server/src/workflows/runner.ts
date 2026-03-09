@@ -26,7 +26,7 @@ function fetchGitHubPR(repo: string, branch: string): { pr: any; diff: string; f
     // Find the most recent open PR targeting the branch
     const prListRaw = execFileSync('gh', [
       'pr', 'list', '--repo', repo, '--base', branch, '--state', 'open',
-      '--json', 'number,title,body,author,headRefName,additions,deletions,changedFiles,url',
+      '--json', 'number,title,body,author,headRefName,headRefOid,additions,deletions,changedFiles,url',
       '--limit', '1'
     ], { encoding: 'utf8', timeout: 15000 }).trim();
     const prs = JSON.parse(prListRaw || '[]');
@@ -59,6 +59,25 @@ function fetchGitHubPR(repo: string, branch: string): { pr: any; diff: string; f
     console.warn(`[trigger] Failed to fetch GitHub PR for ${repo}: ${e?.message}`);
     return null;
   }
+}
+
+function fetchDiffForPR(prNumber: number, repo: string): { diff: string; files: string[] } {
+  let diff = '';
+  try {
+    diff = execFileSync('gh', ['pr', 'diff', String(prNumber), '--repo', repo],
+      { encoding: 'utf8', timeout: 15000 }).trim();
+    if (diff.length > 15000) diff = diff.slice(0, 15000) + '\n... (diff truncated)';
+  } catch { /* best-effort */ }
+
+  let files: string[] = [];
+  try {
+    const raw = execFileSync('gh', ['pr', 'view', String(prNumber), '--repo', repo,
+      '--json', 'files', '--jq', '.files[].path'],
+      { encoding: 'utf8', timeout: 10000 }).trim();
+    files = raw ? raw.split('\n') : [];
+  } catch { /* best-effort */ }
+
+  return { diff, files };
 }
 
 const REVIEWER_ARCHETYPES = [
@@ -153,7 +172,12 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
 
   const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
   const startIndex = opts.startIndex ?? 0;
-  const context: Record<string, any> = { ...(opts.context || {}) };
+
+  // On resume (startIndex > 0), replay completed node outputs from the event log so
+  // downstream nodes (e.g. action) can still access trigger data and guard decisions.
+  // opts.context (hitlDecision, approvedBy) is overlaid last so it always wins.
+  const replayedContext = startIndex > 0 ? await reconstructContextFromLog(runId, startIndex) : {};
+  const context: Record<string, any> = { ...replayedContext, ...(opts.context || {}) };
 
   await emitWorkflowLifecycle(boardId, runId, workflowId, startIndex, nodes.length);
 
@@ -167,9 +191,21 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
       context[node.id] = output;
 
       // Guard node emits board resolution scores via emitBoardResolution step (below)
-      // which reads the already-resolved output from context
+      // which reads the already-resolved output from context.
+      // Heavy internals (_boardResult, consensus) are stripped but decision/risk/hitlThreshold
+      // are kept so context can be reconstructed faithfully on workflow resume.
       const eventOutput = node.type === 'guard'
-        ? { guardType: node.config?.guardType || 'agent_action', policyPack: node.config?.policyPack || '', configured: true, boardResolution: !!output?.boardResolution, guardConfig: extractGuardConfig(node.config) }
+        ? {
+            guardType: node.config?.guardType || 'agent_action',
+            policyPack: node.config?.policyPack || '',
+            configured: true,
+            boardResolution: !!output?.boardResolution,
+            decision: output?.decision,
+            risk: output?.risk,
+            hitlThreshold: output?.hitlThreshold,
+            reasons: output?.reasons,
+            guardConfig: extractGuardConfig(node.config),
+          }
         : output;
       await emitNodeExecuted(boardId, runId, workflowId, i, node, Date.now() - startedAt, eventOutput);
 
@@ -205,6 +241,33 @@ export async function executeLocalFlow(definition: any, workflowId: string, opts
 async function linkRun(runId: string, workflowId: string, startIndex: number) {
   'use step';
   upsertWorkflowRunLink(runId, workflowId, 'local', null, { startIndex });
+}
+
+/**
+ * Step: replay WORKFLOW_NODE_EXECUTED events to reconstruct workflow context up to
+ * a given node index. Used on resume so downstream nodes (e.g. action nodes) can
+ * still access trigger output (PR data), guard decisions, etc. that were computed
+ * before the workflow suspended at a HITL node.
+ * Group node results are also expanded into context so individual child outputs
+ * are accessible by their node IDs.
+ */
+async function reconstructContextFromLog(runId: string, upToIndex: number): Promise<Record<string, any>> {
+  'use step';
+  const context: Record<string, any> = {};
+  const executedEvents = (listEvents({ runId, type: 'WORKFLOW_NODE_EXECUTED', limit: 200 }) as any[]);
+  for (const event of executedEvents) {
+    let p: any = {};
+    try { p = JSON.parse(String(event.payload_json || '')); } catch {}
+    if (typeof p.node_index !== 'number' || p.node_index >= upToIndex || !p.node_id || p.output === undefined) continue;
+    context[p.node_id] = p.output;
+    // Expand group children into context so their individual outputs are also accessible
+    if (p.node_type === 'group' && p.output?.results && typeof p.output.results === 'object') {
+      for (const [childId, childOutput] of Object.entries(p.output.results)) {
+        context[childId] = childOutput;
+      }
+    }
+  }
+  return context;
 }
 
 async function emitWorkflowLifecycle(boardId: string, runId: string, workflowId: string, startIndex: number, nodeCount: number) {
@@ -325,9 +388,9 @@ async function emitBoardResolutionScores(boardId: string, runId: string, guardNo
  * Step wrapper around executeNode — makes each node execution a durable step
  * so the SDK can retry on transient failures and track each node independently.
  */
-async function executeNodeStep(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }) {
+async function executeNodeStep(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }, meta?: { linkedGuardId?: string }) {
   'use step';
-  return executeNode(node, context, ids);
+  return executeNode(node, context, ids, meta);
 }
 
 /** Extract guard-type-specific config fields (excludes shared fields like quorum, riskThreshold). */
@@ -341,10 +404,23 @@ export function extractGuardConfig(config: Record<string, any> | undefined): Rec
   return gc;
 }
 
-async function executeNode(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }) {
+async function executeNode(node: any, context: Record<string, any>, ids: { boardId: string; runId: string; workflowId: string }, meta?: { linkedGuardId?: string }) {
   if (node.type === 'trigger') {
     const source = node.config?.source || node.config?.mode || 'manual';
     if (String(source).startsWith('github.')) {
+      // When triggered by a real GitHub webhook the handler pre-resolves PR data
+      // and stores it here — use it directly, no polling needed.
+      if (context.__triggerPayload?.ok) {
+        const tp = context.__triggerPayload as Record<string, any>;
+        if (tp.pr?.number && tp.repo) {
+          try {
+            const { diff, files } = fetchDiffForPR(Number(tp.pr.number), String(tp.repo));
+            return { ...tp, diff, files };
+          } catch { /* gh not available — return payload as-is */ }
+        }
+        return tp;
+      }
+
       const repo = node.config?.repo || '';
       const branch = node.config?.branch || 'main';
       const base = { ok: true, trigger: source, provider: node.config?.provider || 'github-mcp', repo, branch };
@@ -361,6 +437,7 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
               body: prData.pr.body || '',
               author: prData.pr.author?.login || '',
               headBranch: prData.pr.headRefName || '',
+              sha: prData.pr.headRefOid || '',
               url: prData.pr.url || '',
               additions: prData.pr.additions || 0,
               deletions: prData.pr.deletions || 0,
@@ -372,7 +449,9 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         }
       }
 
-      return base;
+      // No repo configured — agents will receive no PR diff or file context.
+      // Set the repo field in the trigger node config before running this workflow.
+      return { ...base, warning: 'repo is not configured — agents will have no PR diff or file context' };
     }
     if (String(source).startsWith('chat.')) {
       return {
@@ -417,9 +496,25 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     }
     const aggregatedRisk = totalWeight > 0 ? weightedRisk / totalWeight : votes.length > 0 ? votes.reduce((s, v) => s + v.risk, 0) / votes.length : 0.5;
 
+    // Build a set of already-emitted (evaluator:linkedGuardId?) keys to deduplicate on step retry.
+    // Group children run in a single Promise.all durable step — if the SDK retries after a
+    // partial failure, completed agents would otherwise emit duplicate AGENT_VERDICT entries
+    // that skew the guard's consensus calculation.
+    const priorVerdicts = (listEvents({ runId: ids.runId, type: 'AGENT_VERDICT', limit: 500 }) as any[]);
+    const emittedKeys = new Set<string>(
+      priorVerdicts.map(ev => {
+        try {
+          const ep = JSON.parse(String(ev.payload_json || ''));
+          return ep.linkedGuardId ? `${ep.evaluator}:${ep.linkedGuardId}` : String(ep.evaluator || '');
+        } catch { return ''; }
+      }).filter(Boolean)
+    );
+
     // Emit per-evaluator AGENT_VERDICT events (include participant weight + reputation for rolling scores)
     for (let vi = 0; vi < votes.length; vi++) {
       const v = votes[vi];
+      const dedupeKey = meta?.linkedGuardId ? `${v.evaluator}:${meta.linkedGuardId}` : String(v.evaluator || '');
+      if (emittedKeys.has(dedupeKey)) continue; // already emitted — step is retrying, skip duplicate
       const w = personas[vi]?.weight ?? 1;
       const r = personas[vi]?.reputation ?? 100;
       appendEvent(ids.boardId, ids.runId, 'AGENT_VERDICT', {
@@ -430,6 +525,7 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         weight: w,
         reputation: r,
         guardType: 'agent_action',
+        ...(meta?.linkedGuardId ? { linkedGuardId: meta.linkedGuardId } : {}),
       });
     }
 
@@ -442,7 +538,22 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     const riskThreshold = Number(node.config?.riskThreshold ?? 0.7);
 
     // Check for agent verdicts from upstream agent/group nodes
-    const storedVerdicts = (listEvents({ runId: ids.runId, type: 'AGENT_VERDICT', limit: 500 }) as any[]);
+    const allStoredVerdicts = (listEvents({ runId: ids.runId, type: 'AGENT_VERDICT', limit: 500 }) as any[]);
+
+    // Filter by linkedGuardId when present — supports multi-guard workflows where each
+    // group is linked to a specific guard via the group's linkedGuardId config field.
+    const hasLinkedIds = allStoredVerdicts.some(v => {
+      try { return !!JSON.parse(String(v.payload_json || ''))?.linkedGuardId; } catch { return false; }
+    });
+    const linkedVerdicts = hasLinkedIds
+      ? allStoredVerdicts.filter(v => {
+          try { return JSON.parse(String(v.payload_json || ''))?.linkedGuardId === node.id; } catch { return false; }
+        })
+      : allStoredVerdicts;
+
+    // Respect numberOfReviewers cap: take the N most recent verdicts if configured.
+    const numberOfReviewers = Number(node.config?.numberOfReviewers ?? 0);
+    const storedVerdicts = numberOfReviewers > 0 ? linkedVerdicts.slice(-numberOfReviewers) : linkedVerdicts;
 
     if (storedVerdicts.length > 0) {
       // Agents ran before guard — resolve their verdicts through the board
@@ -491,6 +602,7 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         reasons: finalReasons,
         consensus: result.meta || null,
         boardResolution: true,
+        hitlThreshold: Number(node.config?.hitlThreshold ?? node.config?.riskThreshold ?? 0.7),
         _boardResult: result,
       };
     }
@@ -513,6 +625,7 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
       reasons: [consensus.reason],
       consensus: consensus.meta || null,
       boardResolution: false,
+      hitlThreshold: Number(node.config?.hitlThreshold ?? node.config?.riskThreshold ?? 0.7),
     };
   }
 
@@ -520,7 +633,9 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     const guardDecision = Object.values(context).find((v: any) => v?.decision && v?.risk !== undefined) as any;
     const risk = Number(guardDecision?.risk ?? 0.5);
     const decision = String(guardDecision?.decision || '');
-    const threshold = Number(node.config?.threshold ?? 0.7);
+    // Prefer guard's hitlThreshold so the guard owns the risk policy in one place.
+    // Fall back to own config threshold, then to the system default of 0.7.
+    const threshold = Number(node.config?.threshold ?? guardDecision?.hitlThreshold ?? 0.7);
 
     // Always trigger HITL for REWRITE or BLOCK decisions regardless of threshold
     // Only skip if risk is below threshold AND decision is not REWRITE/BLOCK
@@ -531,15 +646,15 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     const boardParticipants = listParticipants(ids.boardId) as any[];
     const chatLinkedParticipants = boardParticipants
       .filter((p: any) => {
-        const meta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
-        return meta.chatAdapter && meta.chatHandle;
+        const participantMeta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
+        return participantMeta.chatAdapter && participantMeta.chatHandle;
       })
       .map((p: any) => {
-        const meta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
-        return { subjectId: p.subject_id, adapter: meta.chatAdapter, handle: meta.chatHandle };
+        const participantMeta = typeof p.metadata_json === 'string' ? JSON.parse(p.metadata_json) : (p.metadata_json || {});
+        return { subjectId: p.subject_id, adapter: participantMeta.chatAdapter, handle: participantMeta.chatHandle };
       });
 
-    const promptMode = node.config?.promptMode || 'yes-no';
+    const promptMode = node.config?.promptMode || node.config?.mode || 'yes-no';
     const timeoutSec = Number(node.config?.timeoutSec ?? 900);
     const requiredVotes = Number(node.config?.requiredVotes ?? 1);
     const isVoteMode = promptMode === 'vote';
@@ -579,8 +694,9 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
     const children = Array.isArray(node.config?.children) ? node.config.children : [];
     if (!children.length) return { ok: true, group: true, children: [] };
 
+    const linkedGuardId = node.config?.linkedGuardId as string | undefined;
     const childResults = await Promise.all(
-      children.map((child: any) => executeNode(child, context, ids))
+      children.map((child: any) => executeNode(child, context, ids, linkedGuardId ? { linkedGuardId } : undefined))
     );
 
     const merged: Record<string, any> = {};
@@ -603,7 +719,55 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
   }
 
   if (node.type === 'action') {
-    return { ok: true, action: node.config?.action || 'noop', inputKeys: Object.keys(context) };
+    const actionName = node.config?.action || 'noop';
+
+    if (actionName === 'github.merge_pr') {
+      // Enforce guard pass requirement
+      if (node.config?.requireGuardPass) {
+        const guardOutput = Object.values(context).find((v: any) => v?.decision && v?.risk !== undefined) as any;
+        if (guardOutput?.decision === 'BLOCK') {
+          return { ok: false, action: actionName, skipped: true, reason: 'Guard decision was BLOCK — merge aborted' };
+        }
+      }
+
+      // Enforce final human approval requirement
+      if (node.config?.requireFinalHumanApprovalYes) {
+        if (context.hitlDecision && context.hitlDecision !== 'YES') {
+          return { ok: false, action: actionName, skipped: true, reason: `Human decision was ${context.hitlDecision} — merge aborted` };
+        }
+      }
+
+      // Find PR context from the trigger node output
+      const triggerOutput = Object.values(context).find((v: any) => v?.trigger && v?.pr?.number) as any;
+      if (!triggerOutput) {
+        return { ok: false, action: actionName, error: 'No PR context available — ensure the trigger node has a repo configured' };
+      }
+
+      const repo = String(triggerOutput.repo || '');
+      const prNumber = Number(triggerOutput.pr.number);
+      // pr.sha is not fetched by the trigger; use repo+prNumber as the idempotency proxy
+      const idempotencyKey = node.config?.idempotencyKeyFrom === 'pr.sha'
+        ? `${repo}#${prNumber}`
+        : `${ids.runId}:${node.id}`;
+
+      const mergeStrategy = String(node.config?.mergeStrategy || 'merge');
+      const mergeFlag = mergeStrategy === 'squash' ? '--squash' : mergeStrategy === 'rebase' ? '--rebase' : '--merge';
+
+      try {
+        execFileSync('gh', ['pr', 'merge', String(prNumber), '--repo', repo, mergeFlag],
+          { encoding: 'utf8', timeout: 30000 });
+        return { ok: true, action: actionName, merged: true, prNumber, repo, idempotencyKey };
+      } catch (e: any) {
+        const msg = String(e?.stderr || e?.message || 'unknown');
+        // Already-merged PRs are not a fatal error
+        if (msg.includes('already merged') || msg.includes('Pull request #' + prNumber + ' is not mergeable')) {
+          return { ok: true, action: actionName, merged: false, alreadyMerged: true, prNumber, repo, idempotencyKey };
+        }
+        return { ok: false, action: actionName, error: msg, prNumber, repo };
+      }
+    }
+
+    return { ok: true, action: actionName, inputKeys: Object.keys(context) };
   }
 
   return { ok: true };

@@ -750,6 +750,31 @@ app.post('/api/webhooks/github', async (req, res) => {
     const workflows = listWorkflows(1000) as WorkflowRecord[];
     const matched: Array<{ workflowId: string; runId?: string }> = [];
 
+    const webhookRepo = String(payload.repository?.full_name || '');
+    const prBaseBranch = String(payload.pull_request?.base?.ref || '');
+
+    // Build a pre-resolved trigger payload from the webhook data so the trigger node
+    // uses it directly instead of polling via gh CLI. Also surfaces pr.sha for idempotency.
+    const pr = payload.pull_request;
+    const triggerPayload = pr ? {
+      ok: true,
+      trigger: source,
+      repo: webhookRepo,
+      branch: prBaseBranch,
+      pr: {
+        number: pr.number,
+        title: pr.title || '',
+        body: pr.body || '',
+        author: pr.user?.login || '',
+        headBranch: pr.head?.ref || '',
+        sha: pr.head?.sha || '',
+        url: pr.html_url || '',
+        additions: pr.additions || 0,
+        deletions: pr.deletions || 0,
+        changedFiles: pr.changed_files || 0,
+      },
+    } : null;
+
     for (const wf of workflows) {
       try {
         const definition = JSON.parse(wf.definition_json || '{}');
@@ -759,7 +784,16 @@ app.post('/api/webhooks/github', async (req, res) => {
         const triggerSource = triggerNode.config?.source;
         if (triggerSource !== source) continue;
 
-        const out = await runWorkflow(definition, wf.id);
+        // Skip if repo is configured and doesn't match the webhook's repository
+        const triggerRepo = String(triggerNode.config?.repo || '');
+        if (triggerRepo && webhookRepo && triggerRepo !== webhookRepo) continue;
+
+        // Skip if branch is configured and the PR is not targeting that base branch
+        const triggerBranch = String(triggerNode.config?.branch || 'main');
+        if (prBaseBranch && triggerBranch !== prBaseBranch) continue;
+
+        const runOpts = triggerPayload ? { context: { __triggerPayload: triggerPayload } } : {};
+        const out = await runWorkflow(definition, wf.id, runOpts);
         matched.push({ workflowId: wf.id, runId: out?.runId });
       } catch (e: any) {
         console.error(`[webhook] Failed to run workflow ${wf.id}:`, e?.message);
