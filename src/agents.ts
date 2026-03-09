@@ -110,3 +110,10 @@ export function isExternalAgent(agent: Agent): boolean {
 export function createAgentRegistry(): AgentRegistry {
   return new AgentRegistry();
 }
+
+/**
+ * Process-scoped default registry shared by the lean MCP server.
+ * Internal AI SDK agents and self-declared external agents both register here.
+ * Resets on process restart — for persistence, use the server/ SQLite layer.
+ */
+export const defaultRegistry = createAgentRegistry();

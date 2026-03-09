@@ -1,4 +1,6 @@
-import type { GuardVote, EvaluateInput, GuardResult, GuardType } from './schemas.js';
+import { randomUUID } from 'node:crypto';
+import type { GuardVote, EvaluateInput, GuardResult, GuardType, PolicyMetadata } from './schemas.js';
+import type { AgentRegistry } from './agents.js';
 
 export function evaluatorVotes(input: EvaluateInput): GuardVote[] {
   const t = input.action.type;
@@ -64,7 +66,11 @@ export function evaluatorVotes(input: EvaluateInput): GuardVote[] {
   return [{ evaluator: 'generic', vote: 'YES', reason: 'No blocking rule matched', risk: 0.2 }];
 }
 
-export function finalizeVotes(votes: GuardVote[], actionType: string): Omit<GuardResult, 'audit_id'> {
+export function finalizeVotes(
+  votes: GuardVote[],
+  actionType: string,
+  policy?: PolicyMetadata
+): Omit<GuardResult, 'audit_id'> {
   const top = votes[0];
   if (!top) {
     return { decision: 'ALLOW', reason: 'No votes cast', risk_score: 0 };
@@ -75,7 +81,14 @@ export function finalizeVotes(votes: GuardVote[], actionType: string): Omit<Guar
   }
 
   if (top.vote === 'REWRITE') {
-    if (actionType === 'code_merge') {
+    // When a policy is provided, use hitlRequiredAboveRisk to decide escalation.
+    // Without a policy, only code_merge escalates to REQUIRE_HUMAN (original default).
+    const hitlThreshold = policy?.hitlRequiredAboveRisk;
+    const requireHuman = hitlThreshold !== undefined
+      ? top.risk >= hitlThreshold
+      : actionType === 'code_merge';
+
+    if (requireHuman) {
       return {
         decision: 'REQUIRE_HUMAN',
         reason: top.reason,
@@ -94,11 +107,35 @@ export function finalizeVotes(votes: GuardVote[], actionType: string): Omit<Guar
   return { decision: 'ALLOW', reason: top.reason, risk_score: top.risk };
 }
 
-export function evaluateGuard(input: EvaluateInput): GuardResult {
+export interface EvaluateGuardOpts {
+  policy?: PolicyMetadata;
+  registry?: AgentRegistry;
+}
+
+export function evaluateGuard(input: EvaluateInput, opts?: EvaluateGuardOpts): GuardResult {
+  const { policy, registry } = opts ?? {};
+
+  // Scope check: if agentId is provided and a registry is wired in, verify the
+  // agent is allowed to perform this action type before running evaluators.
+  if (input.agentId && registry) {
+    const scopeCheck = registry.validateAgentScope(input.agentId, input.action.type);
+    if (!scopeCheck.allowed) {
+      return {
+        decision: 'BLOCK',
+        reason: scopeCheck.reason,
+        risk_score: 1.0,
+        audit_id: randomUUID(),
+        votes: [],
+        guard_type: normalizeGuardType(input.action.type)
+      };
+    }
+  }
+
   const votes = evaluatorVotes(input);
-  const result = finalizeVotes(votes, input.action.type);
+  const result = finalizeVotes(votes, input.action.type, policy);
   return {
     ...result,
+    audit_id: randomUUID(),
     votes,
     guard_type: normalizeGuardType(input.action.type)
   };
@@ -107,5 +144,6 @@ export function evaluateGuard(input: EvaluateInput): GuardResult {
 export function normalizeGuardType(type: string): GuardType {
   const valid: GuardType[] = ['send_email', 'code_merge', 'publish', 'support_reply', 'agent_action', 'deployment', 'permission_escalation'];
   if (valid.includes(type as GuardType)) return type as GuardType;
+  console.error(`[consensus-mcp] Unknown guard type "${type}" — falling back to "agent_action"`);
   return 'agent_action';
 }
