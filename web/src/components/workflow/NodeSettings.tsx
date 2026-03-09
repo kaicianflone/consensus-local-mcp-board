@@ -114,9 +114,25 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
               </FieldLabel>
               {(draft.source || '').startsWith('github.') && (
                 <>
-                  <FieldLabel>Provider <Input value={draft.provider || 'github-mcp'} onChange={(e) => set('provider', e.target.value)} /></FieldLabel>
+                  <div className="col-span-2">
+                    <FieldLabel>
+                      Run Mode
+                      <Select value={draft.runMode || 'webhook'} onChange={(e) => set('runMode', e.target.value)}>
+                        <option value="webhook">PR Webhook — real-time (recommended)</option>
+                        <option value="manual">Manual Poll — on-demand via Run button</option>
+                      </Select>
+                    </FieldLabel>
+                  </div>
                   <FieldLabel>Repository <Input value={draft.repo || ''} onChange={(e) => set('repo', e.target.value)} placeholder="owner/repo" /></FieldLabel>
                   <FieldLabel>Branch <Input value={draft.branch || 'main'} onChange={(e) => set('branch', e.target.value)} /></FieldLabel>
+                  <div className="col-span-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400/90">
+                    <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    {(draft.runMode || 'webhook') === 'webhook' ? (
+                      <span>Webhook mode — configure your GitHub repo to send <strong>Pull request</strong> events to this server. See <strong>Settings → GitHub</strong> for the webhook URL and secret.</span>
+                    ) : (
+                      <span>Manual poll mode — clicking Run fetches the most recent open PR on the configured branch via <code>gh pr list</code>. Requires <code>gh</code> to be authenticated.</span>
+                    )}
+                  </div>
                 </>
               )}
               {(draft.source || '').startsWith('chat.') && (
@@ -288,8 +304,23 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
           )}
 
           {node.type === 'action' && (
-            <div className="col-span-2">
+            <div className="col-span-2 space-y-3">
               <FieldLabel>Action <Input value={draft.action || ''} onChange={(e) => set('action', e.target.value)} placeholder="github.merge_pr" /></FieldLabel>
+              {draft.action === 'github.merge_pr' && (
+                <FieldLabel>
+                  <span className="flex items-center gap-1">
+                    Merge Strategy
+                    <span title="How to merge the PR. Squash creates a single commit, Rebase replays commits inline, Merge adds a merge commit.">
+                      <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                    </span>
+                  </span>
+                  <Select value={draft.mergeStrategy || 'merge'} onChange={(e) => set('mergeStrategy', e.target.value)}>
+                    <option value="merge">Merge commit</option>
+                    <option value="squash">Squash and merge</option>
+                    <option value="rebase">Rebase and merge</option>
+                  </Select>
+                </FieldLabel>
+              )}
             </div>
           )}
 
