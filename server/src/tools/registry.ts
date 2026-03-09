@@ -32,17 +32,47 @@ async function runGuard(type: string, input: unknown) {
 
 export const toolRegistry = {
   'guard.evaluate': {
+    description: 'Evaluate any action against guard policies. Use this when the action type is dynamic or unknown at call time.',
     input: EvaluateInputSchema,
     run: (input: unknown) => runGuard('evaluate', input)
   },
-  'guard.send_email': { input: EvaluateInputSchema, run: (input: unknown) => runGuard('send_email', input) },
-  'guard.code_merge': { input: EvaluateInputSchema, run: (input: unknown) => runGuard('code_merge', input) },
-  'guard.publish': { input: EvaluateInputSchema, run: (input: unknown) => runGuard('publish', input) },
-  'guard.support_reply': { input: EvaluateInputSchema, run: (input: unknown) => runGuard('support_reply', input) },
-  'guard.agent_action': { input: EvaluateInputSchema, run: (input: unknown) => runGuard('agent_action', input) },
-  'guard.deployment': { input: EvaluateInputSchema, run: (input: unknown) => runGuard('deployment', input) },
-  'guard.permission_escalation': { input: EvaluateInputSchema, run: (input: unknown) => runGuard('permission_escalation', input) },
+  'guard.send_email': {
+    description: 'Evaluate an outbound email before sending. Blocks emails containing secrets, credentials, or external attachments that match risk patterns.',
+    input: EvaluateInputSchema,
+    run: (input: unknown) => runGuard('send_email', input)
+  },
+  'guard.code_merge': {
+    description: 'Evaluate a code merge or PR before it lands. Flags changes to auth, security, crypto, or permission files and routes them to human review.',
+    input: EvaluateInputSchema,
+    run: (input: unknown) => runGuard('code_merge', input)
+  },
+  'guard.publish': {
+    description: 'Evaluate content before publishing to a public channel. Detects profanity, PII patterns (SSN), and custom blocked words.',
+    input: EvaluateInputSchema,
+    run: (input: unknown) => runGuard('publish', input)
+  },
+  'guard.support_reply': {
+    description: 'Evaluate a customer support reply before sending. Escalates messages containing refund commitments, legal threats, or configurable escalation keywords.',
+    input: EvaluateInputSchema,
+    run: (input: unknown) => runGuard('support_reply', input)
+  },
+  'guard.agent_action': {
+    description: 'Evaluate a generic agent action. Blocks irreversible actions that have not been explicitly approved by a human.',
+    input: EvaluateInputSchema,
+    run: (input: unknown) => runGuard('agent_action', input)
+  },
+  'guard.deployment': {
+    description: 'Evaluate a deployment before it runs. Production deployments are flagged for human review; non-production environments are allowed through.',
+    input: EvaluateInputSchema,
+    run: (input: unknown) => runGuard('deployment', input)
+  },
+  'guard.permission_escalation': {
+    description: 'Evaluate a permission escalation request. Break-glass escalations are always flagged; standard permission changes are assessed against scope.',
+    input: EvaluateInputSchema,
+    run: (input: unknown) => runGuard('permission_escalation', input)
+  },
   'guard.policy.describe': {
+    description: 'Describe the active guard policy for one or all guard types. Returns quorum thresholds, risk settings, and configurable guard options.',
     input: z.object({ guardType: z.string().optional() }),
     run: (input: unknown) => {
       const guardType = z.object({ guardType: z.string().optional() }).parse(input).guardType;
@@ -120,6 +150,7 @@ export const toolRegistry = {
   },
 
   'persona.generate': {
+    description: 'Generate a new consensus board with a set of evaluator personas. Returns the board record and persona stubs.',
     input: z.object({ boardName: z.string().default('default'), personaCount: z.number().int().min(1).max(25).default(5) }),
     run: (input: unknown) => {
       const parsed = z.object({ boardName: z.string().default('default'), personaCount: z.number().int().min(1).max(25).default(5) }).parse(input);
@@ -128,6 +159,7 @@ export const toolRegistry = {
     }
   },
   'persona.respawn': {
+    description: 'Replace a drifted or failed persona on an existing board. Optionally target a specific persona ID; omitting it replaces the lowest-performing one.',
     input: z.object({ boardId: z.string(), personaId: z.string().optional() }),
     run: (input: unknown) => {
       const parsed = z.object({ boardId: z.string(), personaId: z.string().optional() }).parse(input);
@@ -135,12 +167,29 @@ export const toolRegistry = {
     }
   },
 
-  'board.list': { input: z.object({}), run: () => ({ boards: listBoards() }) },
-  'board.get': { input: BoardGetSchema, run: (input: unknown) => ({ board: getBoard(BoardGetSchema.parse(input).id) }) },
-  'run.get': { input: RunGetSchema, run: (input: unknown) => ({ run: getRun(RunGetSchema.parse(input).id) }) },
-  'audit.search': { input: EventSearchSchema, run: (input: unknown) => ({ events: searchEvents(EventSearchSchema.parse(input).query, EventSearchSchema.parse(input).limit) }) },
+  'board.list': {
+    description: 'List all consensus boards in the local database.',
+    input: z.object({}),
+    run: () => ({ boards: listBoards() })
+  },
+  'board.get': {
+    description: 'Get the full record for a single consensus board by ID.',
+    input: BoardGetSchema,
+    run: (input: unknown) => ({ board: getBoard(BoardGetSchema.parse(input).id) })
+  },
+  'run.get': {
+    description: 'Get the full record and event history for a guard run by ID.',
+    input: RunGetSchema,
+    run: (input: unknown) => ({ run: getRun(RunGetSchema.parse(input).id) })
+  },
+  'audit.search': {
+    description: 'Full-text search across all guard run audit events. Returns up to 500 matching events.',
+    input: EventSearchSchema,
+    run: (input: unknown) => ({ events: searchEvents(EventSearchSchema.parse(input).query, EventSearchSchema.parse(input).limit) })
+  },
 
   'human.approve': {
+    description: 'Submit a human approval decision (YES / NO / REWRITE) for a guard run that is waiting on HITL review.',
     input: z.object({ runId: z.string(), approver: z.string().default('human'), replyText: z.string(), idempotencyKey: z.string(), boardId: z.string().optional() }),
     run: (input: unknown) => humanApprovePost(input)
   }

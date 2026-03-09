@@ -43,6 +43,7 @@ export const GuardResultSchema = z.object({
 export const EvaluateInputSchema = z.object({
   boardId: z.string().min(1),
   runId: z.string().optional(),
+  agentId: z.string().optional(),
   action: z.object({
     type: z.string().min(1),
     payload: z.record(z.any())
@@ -53,6 +54,7 @@ export const EvaluateInputSchema = z.object({
 export const GuardEvaluateRequestSchema = z.object({
   runId: z.string(),
   boardId: z.string(),
+  agentId: z.string().optional(),
   guardType: GuardTypeSchema,
   payload: z.record(z.any()),
   policy: PolicyMetadataSchema.default({}),
