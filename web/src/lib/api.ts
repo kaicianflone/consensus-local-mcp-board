@@ -61,10 +61,6 @@ export async function getProviderStatus(provider: string) {
   return fetch(`${API}/settings/credentials/${encodeURIComponent(provider)}/status`).then(j);
 }
 
-export async function getReputationConfig() { return fetch(`${API}/settings/reputation`).then(j); }
-export async function updateReputationConfig(config: any) {
-  return fetch(`${API}/settings/reputation`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(config) }).then(j);
-}
 
 export async function getAdapters() { return fetch(`${API}/settings/adapters`).then(j); }
 export async function installAdapter(adapter: string) {

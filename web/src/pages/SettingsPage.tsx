@@ -21,12 +21,6 @@ import {
   Radio,
   Send,
   AtSign,
-  Shield,
-  Droplets,
-  Sword,
-  Users,
-  ToggleLeft,
-  ToggleRight,
   BarChart3,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -40,7 +34,6 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Separator } from "../components/ui/separator";
-import { Select } from "../components/ui/select";
 import {
   getCredentialsList,
   upsertCredential,
@@ -48,8 +41,6 @@ import {
   getAdapters,
   installAdapter,
   uninstallAdapter,
-  getReputationConfig,
-  updateReputationConfig,
 } from "../lib/api";
 
 type CredentialEntry = {
@@ -124,24 +115,16 @@ const CHAT_ADAPTERS: AdapterConfig[] = [
     description: "Telegram bot API",
     packageName: "@chat-adapter/telegram",
   },
-  {
-    id: "linear",
-    name: "Linear",
-    icon: BarChart3,
-    iconColor: "text-violet-400",
-    description: "Linear project management SDK",
-    packageName: "@linear/sdk",
-  },
 ];
 
-const PROVIDERS: ProviderConfig[] = [
+const TRIGGER_ADAPTERS: (Omit<AdapterConfig, 'packageName'> & { packageName?: string; fields: ProviderConfig['fields'] })[] = [
   {
     id: "github",
     name: "GitHub",
     icon: Github,
     iconColor: "text-white",
-    description:
-      "Connect GitHub to trigger workflows from PRs, commits, and issues. ",
+    description: "Trigger workflows from PRs, commits, and issues.",
+    packageName: undefined,
     fields: [
       {
         key: "personal_access_token",
@@ -157,6 +140,37 @@ const PROVIDERS: ProviderConfig[] = [
       },
     ],
   },
+  {
+    id: "linear",
+    name: "Linear",
+    icon: BarChart3,
+    iconColor: "text-violet-400",
+    description: "Trigger workflows from Linear tasks and create subtask plans.",
+    packageName: "@linear/sdk",
+    fields: [
+      {
+        key: "api_key",
+        label: "API Key",
+        placeholder: "lin_api_xxxxxxxxxxxx",
+        helpText: "Personal or workspace API key from Linear Settings → API.",
+      },
+      {
+        key: "webhook_secret",
+        label: "Webhook Secret",
+        placeholder: "your-linear-webhook-secret",
+        helpText: "Used to verify incoming Linear webhook payloads.",
+      },
+      {
+        key: "team_id",
+        label: "Default Team ID",
+        placeholder: "ENG",
+        helpText: "Default Linear team for task creation. Can be overridden per workflow.",
+      },
+    ],
+  },
+];
+
+const PROVIDERS: ProviderConfig[] = [
   {
     id: "slack",
     name: "Slack",
@@ -259,35 +273,247 @@ const PROVIDERS: ProviderConfig[] = [
       { key: "api_key", label: "API Key", placeholder: "sk-ant-xxxxxxxxxxxx" },
     ],
   },
-  {
-    id: "linear",
-    name: "Linear",
-    icon: BarChart3,
-    iconColor: "text-violet-400",
-    description: "Connect Linear to trigger workflows from tasks and create subtask plans.",
-    requiresAdapter: true,
-    fields: [
-      {
-        key: "api_key",
-        label: "API Key",
-        placeholder: "lin_api_xxxxxxxxxxxx",
-        helpText: "Personal or workspace API key from Linear Settings → API.",
-      },
-      {
-        key: "webhook_secret",
-        label: "Webhook Secret",
-        placeholder: "your-linear-webhook-secret",
-        helpText: "Used to verify incoming Linear webhook payloads.",
-      },
-      {
-        key: "team_id",
-        label: "Default Team ID",
-        placeholder: "ENG",
-        helpText: "Default Linear team for task creation. Can be overridden per workflow.",
-      },
-    ],
-  },
 ];
+
+function TriggerAdaptersSection({
+  adapters,
+  credentials,
+  onInstall,
+  onUninstall,
+  onSave,
+  onDelete,
+}: {
+  adapters: Record<string, boolean>;
+  credentials: CredentialEntry[];
+  onInstall: (id: string) => Promise<void>;
+  onUninstall: (id: string) => Promise<void>;
+  onSave: (provider: string, keyName: string, value: string) => Promise<void>;
+  onDelete: (provider: string, keyName: string) => Promise<void>;
+}) {
+  const [installing, setInstalling] = useState<Record<string, boolean>>({});
+  const [uninstalling, setUninstalling] = useState<Record<string, boolean>>({});
+  // Keyed by "adapterId:fieldKey"
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [visible, setVisible] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+
+  const handleInstall = async (id: string) => {
+    setInstalling((s) => ({ ...s, [id]: true }));
+    try { await onInstall(id); } finally { setInstalling((s) => ({ ...s, [id]: false })); }
+  };
+
+  const handleUninstall = async (id: string) => {
+    setUninstalling((s) => ({ ...s, [id]: true }));
+    try { await onUninstall(id); } finally { setUninstalling((s) => ({ ...s, [id]: false })); }
+  };
+
+  const handleSaveField = async (adapterId: string, key: string) => {
+    const k = `${adapterId}:${key}`;
+    const val = values[k]?.trim();
+    if (!val) return;
+    setSaving((s) => ({ ...s, [k]: true }));
+    try {
+      await onSave(adapterId, key, val);
+      setValues((v) => ({ ...v, [k]: "" }));
+    } finally {
+      setSaving((s) => ({ ...s, [k]: false }));
+    }
+  };
+
+  const handleDeleteField = async (adapterId: string, key: string) => {
+    const k = `${adapterId}:${key}`;
+    setDeleting((s) => ({ ...s, [k]: true }));
+    try { await onDelete(adapterId, key); } finally { setDeleting((s) => ({ ...s, [k]: false })); }
+  };
+
+  const webhookUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/webhooks/github`
+      : "/api/webhooks/github";
+
+  const copyWebhookUrl = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 2000);
+  };
+
+  return (
+    <Card className="bg-card border-border/50">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <Webhook className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle>Trigger Adapters</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Connect external services to trigger workflows via webhooks and APIs.
+              </p>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <Separator />
+      <CardContent className="pt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {TRIGGER_ADAPTERS.map((adapter) => {
+            const isInstalled = adapter.packageName ? (adapters[adapter.id] || false) : true;
+            const isInstalling = installing[adapter.id] || false;
+            const isUninstalling = uninstalling[adapter.id] || false;
+            const busy = isInstalling || isUninstalling;
+            const providerCredentials = credentials.filter((c) => c.provider === adapter.id);
+            const configuredKeys = new Set(providerCredentials.map((c) => c.keyName));
+
+            return (
+              <div
+                key={adapter.id}
+                className={`rounded-lg border p-3 transition-all sm:col-span-2 ${
+                  isInstalled
+                    ? "border-primary/30 bg-primary/5"
+                    : "border-border/50 bg-muted/20"
+                }`}
+              >
+                {/* Header row — matches ChatAdaptersSection */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <adapter.icon className={`h-5 w-5 shrink-0 ${adapter.iconColor}`} />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{adapter.name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{adapter.description}</div>
+                    </div>
+                  </div>
+                  {adapter.packageName && (
+                    isInstalled ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleUninstall(adapter.id)}
+                        disabled={busy}
+                        className="shrink-0 h-8 px-2.5 text-xs text-destructive hover:text-destructive"
+                      >
+                        {isUninstalling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleInstall(adapter.id)}
+                        disabled={busy}
+                        className="shrink-0 h-8 gap-1.5 text-xs"
+                      >
+                        {isInstalling ? (
+                          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Installing...</>
+                        ) : (
+                          <><Download className="h-3.5 w-3.5" /> Install</>
+                        )}
+                      </Button>
+                    )
+                  )}
+                </div>
+
+                {/* Credential fields — only when installed */}
+                {isInstalled && (
+                  <div className="mt-3 pt-3 border-t border-border/40 space-y-4">
+                    {adapter.id === "github" && (
+                      <div className="rounded-md border border-border/50 bg-muted/30 p-3">
+                        <div className="flex items-center gap-2 text-sm font-medium mb-1.5">
+                          <Webhook className="h-4 w-4 text-muted-foreground" />
+                          Webhook URL
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 rounded bg-background px-3 py-1.5 text-xs font-mono text-muted-foreground truncate border border-border/50">
+                            {webhookUrl}
+                          </code>
+                          <Button variant="outline" size="sm" onClick={copyWebhookUrl} className="shrink-0 gap-1.5">
+                            {copiedWebhook ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedWebhook ? "Copied" : "Copy"}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1.5">
+                          Add this URL in your GitHub repo settings under Webhooks. Set content type to application/json.
+                        </p>
+                      </div>
+                    )}
+                    {adapter.fields.map((field) => {
+                      const k = `${adapter.id}:${field.key}`;
+                      const isConfigured = configuredKeys.has(field.key);
+                      const isVisible = visible[k] || false;
+                      const isSaving = saving[k] || false;
+                      const isDeleting = deleting[k] || false;
+                      const currentValue = values[k] || "";
+
+                      return (
+                        <div key={field.key} className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium flex items-center gap-2">
+                              {field.label}
+                              {isConfigured ? (
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                              ) : (
+                                <XCircle className="h-3.5 w-3.5 text-muted-foreground/50" />
+                              )}
+                            </label>
+                            {isConfigured && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteField(adapter.id, field.key)}
+                                disabled={isDeleting}
+                                className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                {isDeleting ? "Removing..." : "Remove"}
+                              </Button>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <Input
+                                type={isVisible ? "text" : "password"}
+                                placeholder={isConfigured ? "••••••••••••" : field.placeholder}
+                                value={currentValue}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  setValues((v) => ({ ...v, [k]: e.target.value }))
+                                }
+                                className="pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setVisible((v) => ({ ...v, [k]: !isVisible }))}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </button>
+                            </div>
+                            <Button
+                              onClick={() => handleSaveField(adapter.id, field.key)}
+                              disabled={!currentValue.trim() || isSaving}
+                              size="sm"
+                              className="shrink-0 gap-1.5"
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                              {isSaving ? "Saving..." : isConfigured ? "Update" : "Save"}
+                            </Button>
+                          </div>
+                          {field.helpText && (
+                            <p className="text-xs text-muted-foreground">{field.helpText}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function ChatAdaptersSection({
   adapters,
@@ -614,473 +840,20 @@ function ProviderCard({
   );
 }
 
-type SlashRule = {
-  id: string;
-  label: string;
-  description: string;
-  penalty: number;
-  enabled: boolean;
-};
-
-type ReputationConfigData = {
-  faucet: {
-    initialReputation: number;
-    minReputation: number;
-    maxReputation: number;
-    dripAmount: number;
-    dripTrigger: string;
-    decayRate: number;
-    decayInterval: string;
-  };
-  slashing: {
-    enabled: boolean;
-    rules: SlashRule[];
-  };
-  persona: {
-    archetypeBonus: number;
-    diversityWeight: number;
-    minPersonasForBonus: number;
-  };
-};
-
-const DRIP_TRIGGERS = [
-  { value: "consensus_match", label: "Consensus Match" },
-  { value: "correct_vote", label: "Correct Vote" },
-  { value: "participation", label: "Participation" },
-  { value: "per_round", label: "Per Round" },
-];
-
-const DECAY_INTERVALS = [
-  { value: "per_round", label: "Per Round" },
-  { value: "per_day", label: "Per Day" },
-  { value: "per_workflow", label: "Per Workflow Run" },
-  { value: "none", label: "No Decay" },
-];
-
-function ReputationSettingsSection({
-  config,
-  onSave,
-}: {
-  config: ReputationConfigData;
-  onSave: (config: ReputationConfigData) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState<ReputationConfigData>(config);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => {
-    setDraft(config);
-    setDirty(false);
-  }, [config]);
-
-  function updateFaucet(key: string, value: any) {
-    setDraft((d) => ({ ...d, faucet: { ...d.faucet, [key]: value } }));
-    setDirty(true);
-  }
-
-  function updateSlashing(key: string, value: any) {
-    setDraft((d) => ({ ...d, slashing: { ...d.slashing, [key]: value } }));
-    setDirty(true);
-  }
-
-  function updateRule(ruleId: string, key: string, value: any) {
-    setDraft((d) => ({
-      ...d,
-      slashing: {
-        ...d.slashing,
-        rules: d.slashing.rules.map((r) =>
-          r.id === ruleId ? { ...r, [key]: value } : r,
-        ),
-      },
-    }));
-    setDirty(true);
-  }
-
-  function updatePersona(key: string, value: any) {
-    setDraft((d) => ({ ...d, persona: { ...d.persona, [key]: value } }));
-    setDirty(true);
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await onSave(draft);
-      setDirty(false);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card className="bg-card border-border/50">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <Shield className="h-5 w-5 text-amber-400" />
-            </div>
-            <div>
-              <CardTitle>Reputation & Slashing</CardTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Configure reputation faucet, slash rules, and persona engine
-                settings.
-              </p>
-            </div>
-          </div>
-          {dirty && (
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving}
-              className="gap-1.5"
-            >
-              <Save className="h-3.5 w-3.5" />
-              {saving ? "Saving..." : "Save Changes"}
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <Separator />
-      <CardContent className="pt-4 space-y-6">
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Droplets className="h-4 w-4 text-blue-400" />
-            <h3 className="text-sm font-medium">Reputation Faucet</h3>
-            <Badge variant="outline" className="text-[10px]">
-              consensus-tools
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            Controls how reputation flows to agents. Agents earn reputation when
-            they align with consensus outcomes.
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Initial Rep
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={draft.faucet.initialReputation}
-                onChange={(e) =>
-                  updateFaucet(
-                    "initialReputation",
-                    parseFloat(e.target.value) || 0,
-                  )
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Min Rep
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={draft.faucet.minReputation}
-                onChange={(e) =>
-                  updateFaucet("minReputation", parseFloat(e.target.value) || 0)
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Max Rep
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={draft.faucet.maxReputation}
-                onChange={(e) =>
-                  updateFaucet("maxReputation", parseFloat(e.target.value) || 0)
-                }
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Drip Amount
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="0"
-                max="0.5"
-                step="0.005"
-                value={draft.faucet.dripAmount}
-                onChange={(e) =>
-                  updateFaucet("dripAmount", parseFloat(e.target.value) || 0)
-                }
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Rep gained per trigger event
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Drip Trigger
-              </label>
-              <Select
-                className="h-8 text-xs"
-                value={draft.faucet.dripTrigger}
-                onChange={(e) => updateFaucet("dripTrigger", e.target.value)}
-              >
-                {DRIP_TRIGGERS.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
-              <p className="text-[10px] text-muted-foreground">
-                When reputation is awarded
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Decay Rate
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="0"
-                max="0.5"
-                step="0.005"
-                value={draft.faucet.decayRate}
-                onChange={(e) =>
-                  updateFaucet("decayRate", parseFloat(e.target.value) || 0)
-                }
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Passive rep loss over time
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Decay Interval
-              </label>
-              <Select
-                className="h-8 text-xs"
-                value={draft.faucet.decayInterval}
-                onChange={(e) => updateFaucet("decayInterval", e.target.value)}
-              >
-                {DECAY_INTERVALS.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
-              <p className="text-[10px] text-muted-foreground">
-                How often decay applies
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Sword className="h-4 w-4 text-red-400" />
-              <h3 className="text-sm font-medium">Slash Rules</h3>
-              <Badge variant="outline" className="text-[10px]">
-                consensus-tools
-              </Badge>
-            </div>
-            <button
-              onClick={() => updateSlashing("enabled", !draft.slashing.enabled)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {draft.slashing.enabled ? (
-                <>
-                  <ToggleRight className="h-4 w-4 text-emerald-400" /> Enabled
-                </>
-              ) : (
-                <>
-                  <ToggleLeft className="h-4 w-4 text-muted-foreground" />{" "}
-                  Disabled
-                </>
-              )}
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            Penalties applied to agent reputation when they violate consensus
-            expectations.
-          </p>
-          <div className="space-y-2">
-            {draft.slashing.rules.map((rule) => (
-              <div
-                key={rule.id}
-                className={`rounded-lg border p-3 transition-all ${
-                  rule.enabled && draft.slashing.enabled
-                    ? "border-red-500/20 bg-red-500/5"
-                    : "border-border/50 bg-muted/20 opacity-60"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() =>
-                        updateRule(rule.id, "enabled", !rule.enabled)
-                      }
-                      disabled={!draft.slashing.enabled}
-                      className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                    >
-                      {rule.enabled ? (
-                        <ToggleRight className="h-4 w-4 text-red-400" />
-                      ) : (
-                        <ToggleLeft className="h-4 w-4" />
-                      )}
-                    </button>
-                    <span className="text-sm font-medium">{rule.label}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] text-muted-foreground">
-                      Penalty:
-                    </label>
-                    <Input
-                      className="h-6 w-16 text-xs text-center"
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={rule.penalty}
-                      onChange={(e) =>
-                        updateRule(
-                          rule.id,
-                          "penalty",
-                          parseFloat(e.target.value) || 0,
-                        )
-                      }
-                      disabled={!draft.slashing.enabled || !rule.enabled}
-                    />
-                  </div>
-                </div>
-                <p className="text-[10px] text-muted-foreground pl-6">
-                  {rule.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="h-4 w-4 text-purple-400" />
-            <h3 className="text-sm font-medium">Persona Engine</h3>
-            <Badge variant="outline" className="text-[10px]">
-              consensus-persona-engine
-            </Badge>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            Bonuses for diverse persona usage and archetype specialization.
-          </p>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Archetype Bonus
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="0"
-                max="0.5"
-                step="0.01"
-                value={draft.persona.archetypeBonus}
-                onChange={(e) =>
-                  updatePersona(
-                    "archetypeBonus",
-                    parseFloat(e.target.value) || 0,
-                  )
-                }
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Extra rep for archetype agents
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Diversity Weight
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="0"
-                max="1"
-                step="0.05"
-                value={draft.persona.diversityWeight}
-                onChange={(e) =>
-                  updatePersona(
-                    "diversityWeight",
-                    parseFloat(e.target.value) || 0,
-                  )
-                }
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Bonus for varied persona mix
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                Min Personas
-              </label>
-              <Input
-                className="h-8 text-xs"
-                type="number"
-                min="1"
-                max="10"
-                step="1"
-                value={draft.persona.minPersonasForBonus}
-                onChange={(e) =>
-                  updatePersona(
-                    "minPersonasForBonus",
-                    parseInt(e.target.value) || 1,
-                  )
-                }
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Min agents for diversity bonus
-              </p>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function SettingsPage() {
   const [credentials, setCredentials] = useState<CredentialEntry[]>([]);
   const [adapters, setAdapters] = useState<Record<string, boolean>>({});
-  const [reputationConfig, setReputationConfig] =
-    useState<ReputationConfigData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async () => {
     try {
-      const [credData, adapterData, repData] = await Promise.all([
+      const [credData, adapterData] = await Promise.all([
         getCredentialsList(),
         getAdapters(),
-        getReputationConfig(),
       ]);
       setCredentials(credData.credentials || []);
       setAdapters(adapterData.adapters || {});
-      setReputationConfig(repData.config || null);
     } catch (e) {
       console.error("Failed to load settings:", e);
     } finally {
@@ -1116,16 +889,11 @@ export default function SettingsPage() {
     await loadAll();
   };
 
-  const handleSaveReputation = async (config: ReputationConfigData) => {
-    const result = await updateReputationConfig(config);
-    setReputationConfig(result.config);
-  };
-
   const visibleProviders = PROVIDERS.filter(
     (p) => !p.requiresAdapter || adapters[p.id],
   );
 
-  const [activeSection, setActiveSection] = useState("reputation");
+  const [activeSection, setActiveSection] = useState("triggers");
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -1144,10 +912,10 @@ export default function SettingsPage() {
 
   const sidebarItems = [
     {
-      id: "reputation",
-      label: "Reputation & Slashing",
-      icon: Shield,
-      color: "text-amber-400",
+      id: "triggers",
+      label: "Trigger Adapters",
+      icon: Webhook,
+      color: "text-primary",
     },
     {
       id: "adapters",
@@ -1223,13 +991,15 @@ export default function SettingsPage() {
           </nav>
 
           <div className="flex-1 min-w-0 space-y-4">
-            <div id="reputation" data-settings-section>
-              {reputationConfig && (
-                <ReputationSettingsSection
-                  config={reputationConfig}
-                  onSave={handleSaveReputation}
-                />
-              )}
+            <div id="triggers" data-settings-section>
+              <TriggerAdaptersSection
+                adapters={adapters}
+                credentials={credentials}
+                onInstall={handleInstall}
+                onUninstall={handleUninstall}
+                onSave={handleSave}
+                onDelete={handleDelete}
+              />
             </div>
 
             <div id="adapters" data-settings-section>
