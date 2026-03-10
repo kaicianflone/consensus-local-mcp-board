@@ -244,12 +244,12 @@ describe('Runner event emissions', () => {
       expect(guardExec).toBeDefined();
 
       const payload = guardExec![3];
-      // Should have harness config, NOT verdict fields
+      // Should have harness config AND verdict fields (kept for workflow resume)
       expect(payload.output).toHaveProperty('guardType', 'code_merge');
       expect(payload.output).toHaveProperty('configured', true);
-      expect(payload.output).not.toHaveProperty('decision');
-      expect(payload.output).not.toHaveProperty('risk');
-      expect(payload.output).not.toHaveProperty('reasons');
+      expect(payload.output).toHaveProperty('decision');
+      expect(payload.output).toHaveProperty('risk');
+      expect(payload.output).toHaveProperty('reasons');
     });
 
     it('should still populate context with full guard output for downstream nodes', async () => {
