@@ -463,6 +463,20 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         fromUsers: node.config?.fromUsers || ''
       };
     }
+    if (String(source).startsWith('linear.')) {
+      // When triggered by a real Linear webhook, the handler pre-resolves task data
+      if (context.__triggerPayload?.ok) {
+        return context.__triggerPayload;
+      }
+      return {
+        ok: true,
+        trigger: source,
+        provider: node.config?.provider || 'linear-mcp',
+        team: node.config?.team || '',
+        project: node.config?.project || '',
+        warning: !node.config?.team ? 'team is not configured — configure it in the trigger node or Settings → Linear' : undefined,
+      };
+    }
     return { ok: true, trigger: source };
   }
 
@@ -765,6 +779,29 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         }
         return { ok: false, action: actionName, error: msg, prNumber, repo };
       }
+    }
+
+    if (actionName === 'linear.create_subtasks') {
+      // Enforce guard pass requirement
+      if (node.config?.requireGuardPass) {
+        const guardOutput = Object.values(context).find((v: any) => v?.decision && v?.risk !== undefined) as any;
+        if (guardOutput?.decision === 'BLOCK') {
+          return { ok: false, action: actionName, skipped: true, reason: 'Guard decision was BLOCK — subtask creation aborted' };
+        }
+      }
+
+      // Collect the task decomposition from agent/guard context
+      const guardOutput = Object.values(context).find((v: any) => v?.decision && v?.risk !== undefined) as any;
+      const triggerOutput = Object.values(context).find((v: any) => v?.trigger) as any;
+      return {
+        ok: true,
+        action: actionName,
+        parentTask: triggerOutput?.task?.title || triggerOutput?.project || 'Unknown',
+        guardDecision: guardOutput?.decision || 'UNKNOWN',
+        guardRisk: guardOutput?.risk,
+        team: triggerOutput?.team || '',
+        note: 'Linear subtask creation will be executed via the Linear SDK when configured',
+      };
     }
 
     return { ok: true, action: actionName, inputKeys: Object.keys(context) };

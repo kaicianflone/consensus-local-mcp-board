@@ -35,6 +35,10 @@ export async function updateWorkflow(id: string, patch: any) { return fetch(`${A
 export async function runWorkflow(id: string) { return fetch(`${API}/workflows/${id}/run`, { method: 'POST' }).then(j); }
 export async function approveWorkflowRun(runId: string, decision: 'YES' | 'NO', approver = 'human') { return fetch(`${API}/workflow-runs/${runId}/approve`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision, approver }) }).then(j); }
 export async function getWorkflow(id: string) { return fetch(`${API}/workflows/${id}`).then(j); }
+export async function deleteWorkflow(id: string) { return fetch(`${API}/workflows/${id}`, { method: 'DELETE' }).then(j); }
+
+export async function getTemplates() { return fetch(`${API}/templates`).then(j); }
+export async function getTemplate(id: string) { return fetch(`${API}/templates/${id}`).then(j); }
 
 export async function connectAgent(input: { name: string; scopes?: string[]; boards?: string[]; workflows?: string[] }) { return fetch(`${API}/agents/connect`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }).then(j); }
 export async function listAgents() { return fetch(`${API}/agents`).then(j); }

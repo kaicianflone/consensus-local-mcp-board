@@ -27,6 +27,7 @@ import {
   Users,
   ToggleLeft,
   ToggleRight,
+  BarChart3,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -122,6 +123,14 @@ const CHAT_ADAPTERS: AdapterConfig[] = [
     iconColor: "text-sky-400",
     description: "Telegram bot API",
     packageName: "@chat-adapter/telegram",
+  },
+  {
+    id: "linear",
+    name: "Linear",
+    icon: BarChart3,
+    iconColor: "text-violet-400",
+    description: "Linear project management SDK",
+    packageName: "@linear/sdk",
   },
 ];
 
@@ -248,6 +257,34 @@ const PROVIDERS: ProviderConfig[] = [
     description: "Alternative AI provider for guard evaluations.",
     fields: [
       { key: "api_key", label: "API Key", placeholder: "sk-ant-xxxxxxxxxxxx" },
+    ],
+  },
+  {
+    id: "linear",
+    name: "Linear",
+    icon: BarChart3,
+    iconColor: "text-violet-400",
+    description: "Connect Linear to trigger workflows from tasks and create subtask plans.",
+    requiresAdapter: true,
+    fields: [
+      {
+        key: "api_key",
+        label: "API Key",
+        placeholder: "lin_api_xxxxxxxxxxxx",
+        helpText: "Personal or workspace API key from Linear Settings → API.",
+      },
+      {
+        key: "webhook_secret",
+        label: "Webhook Secret",
+        placeholder: "your-linear-webhook-secret",
+        helpText: "Used to verify incoming Linear webhook payloads.",
+      },
+      {
+        key: "team_id",
+        label: "Default Team ID",
+        placeholder: "ENG",
+        helpText: "Default Linear team for task creation. Can be overridden per workflow.",
+      },
     ],
   },
 ];
