@@ -19,19 +19,53 @@ const CHAT_CHANNELS = [
   { id: 'imessage', label: 'iMessage' },
 ];
 
-const TRIGGER_SOURCES = [
-  { id: 'github.pr.opened', label: 'GitHub PR Opened' },
-  { id: 'github.pr.updated', label: 'GitHub PR Updated' },
-  { id: 'github.pr.review_requested', label: 'GitHub PR Review Requested' },
-  { id: 'linear.task.created', label: 'Linear Task Created' },
-  { id: 'linear.task.updated', label: 'Linear Task Updated' },
-  { id: 'linear.webhook', label: 'Linear Webhook' },
-  { id: 'chat.message', label: 'Chat Message' },
-  { id: 'chat.mention', label: 'Chat Mention' },
-  { id: 'chat.command', label: 'Chat Command' },
-  { id: 'manual', label: 'Manual' },
-  { id: 'webhook', label: 'Webhook' },
+const TRIGGER_SOURCE_GROUPS: { label: string; items: { id: string; label: string }[] }[] = [
+  { label: 'GitHub', items: [
+    { id: 'github.pr.opened', label: 'PR Opened' },
+    { id: 'github.pr.updated', label: 'PR Updated' },
+    { id: 'github.pr.closed', label: 'PR Closed' },
+    { id: 'github.pr.review_requested', label: 'PR Review Requested' },
+    { id: 'github.commit', label: 'Push / Commit' },
+    { id: 'github.issue.opened', label: 'Issue Opened' },
+    { id: 'github.issue.closed', label: 'Issue Closed' },
+    { id: 'github.comment.created', label: 'Comment Created' },
+  ]},
+  { label: 'Linear', items: [
+    { id: 'linear.task.created', label: 'Task Created' },
+    { id: 'linear.task.updated', label: 'Task Updated' },
+    { id: 'linear.webhook', label: 'Webhook' },
+  ]},
+  { label: 'Cron: Linear', items: [
+    { id: 'cron.linear.unassigned_subtasks', label: 'Unassigned Subtasks' },
+    { id: 'cron.linear.stale_tasks', label: 'Stale Tasks' },
+    { id: 'cron.linear.overdue_tasks', label: 'Overdue Tasks' },
+  ]},
+  { label: 'Cron: GitHub', items: [
+    { id: 'cron.github.stale_prs', label: 'Stale PRs' },
+    { id: 'cron.github.failed_checks', label: 'Failed CI Checks' },
+    { id: 'cron.github.unreviewed_prs', label: 'Unreviewed PRs' },
+    { id: 'cron.github.issue_triage', label: 'Issue Triage' },
+  ]},
+  { label: 'Chat', items: [
+    { id: 'chat.message', label: 'Message' },
+    { id: 'chat.mention', label: 'Mention' },
+    { id: 'chat.command', label: 'Command' },
+  ]},
+  { label: 'Other', items: [
+    { id: 'manual', label: 'Manual' },
+    { id: 'webhook', label: 'Webhook' },
+  ]},
 ];
+
+const CRON_EVENT_HINTS: Record<string, string> = {
+  'cron.linear.unassigned_subtasks': 'Fetches unassigned subtasks and team members from Linear on schedule. Requires a Linear API key in Settings → Linear.',
+  'cron.linear.stale_tasks': 'Finds tasks not updated within the stale threshold. Excludes completed/cancelled. Requires a Linear API key in Settings → Linear.',
+  'cron.linear.overdue_tasks': 'Finds tasks past their due date. Excludes completed/cancelled. Requires a Linear API key in Settings → Linear.',
+  'cron.github.stale_prs': 'Finds open PRs with no activity beyond the stale threshold. Requires gh CLI to be authenticated.',
+  'cron.github.failed_checks': 'Finds open PRs with failing CI checks beyond the hour threshold. Requires gh CLI to be authenticated.',
+  'cron.github.unreviewed_prs': 'Finds open PRs awaiting review beyond the pending threshold. Requires gh CLI to be authenticated.',
+  'cron.github.issue_triage': 'Finds open issues that are unlabeled and/or unassigned. Requires gh CLI to be authenticated.',
+};
 
 interface NodeSettingsProps {
   node: WorkflowNode | null;
@@ -112,7 +146,11 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
               <FieldLabel>
                 Source
                 <Select value={draft.source || 'manual'} onChange={(e) => set('source', e.target.value)}>
-                  {TRIGGER_SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  {TRIGGER_SOURCE_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.items.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    </optgroup>
+                  ))}
                 </Select>
               </FieldLabel>
               {(draft.source || '').startsWith('github.') && (
@@ -160,6 +198,9 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
                     )}
                   </div>
                 </>
+              )}
+              {(draft.source || '').startsWith('cron.') && (
+                <CronEventConfig source={draft.source} draft={draft} set={set} />
               )}
               {(draft.source || '').startsWith('chat.') && (
                 <>
@@ -331,7 +372,15 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
 
           {node.type === 'action' && (
             <div className="col-span-2 space-y-3">
-              <FieldLabel>Action <Input value={draft.action || ''} onChange={(e) => set('action', e.target.value)} placeholder="github.merge_pr" /></FieldLabel>
+              <FieldLabel>
+                Action
+                <Select value={draft.action || ''} onChange={(e) => set('action', e.target.value)}>
+                  <option value="">Select action...</option>
+                  <option value="github.merge_pr">GitHub: Merge PR</option>
+                  <option value="linear.create_subtasks">Linear: Create Subtasks</option>
+                  <option value="linear.assign_subtasks">Linear: Assign Subtasks</option>
+                </Select>
+              </FieldLabel>
               {draft.action === 'github.merge_pr' && (
                 <FieldLabel>
                   <span className="flex items-center gap-1">
@@ -369,6 +418,146 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Cron event subtype config ──
+
+function CronEventConfig({ source, draft, set }: { source: string; draft: Record<string, any>; set: (k: string, v: any) => void }) {
+  const isLinear = source.startsWith('cron.linear.');
+  const isGitHub = source.startsWith('cron.github.');
+
+  return (
+    <>
+      {/* Shared: Cron expression */}
+      <FieldLabel>
+        <span className="flex items-center gap-1">
+          Cron Expression
+          <span title="Standard cron syntax: min hour dom mon dow. E.g. */15 * * * * = every 15 minutes, 0 9 * * 1-5 = weekdays at 9am.">
+            <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+          </span>
+        </span>
+        <Input value={draft.cronExpression || '*/30 * * * *'} onChange={(e) => set('cronExpression', e.target.value)} placeholder="*/30 * * * *" />
+      </FieldLabel>
+
+      {/* Linear shared: Team + Project */}
+      {isLinear && (
+        <>
+          <FieldLabel>Team ID <Input value={draft.team || ''} onChange={(e) => set('team', e.target.value)} placeholder="ENG" /></FieldLabel>
+          <FieldLabel>Project (optional) <Input value={draft.project || ''} onChange={(e) => set('project', e.target.value)} placeholder="my-project" /></FieldLabel>
+        </>
+      )}
+
+      {/* GitHub shared: Repo + Base Branch */}
+      {isGitHub && (
+        <>
+          <FieldLabel>Repository <Input value={draft.repo || ''} onChange={(e) => set('repo', e.target.value)} placeholder="owner/repo" /></FieldLabel>
+          <FieldLabel>Base Branch (optional) <Input value={draft.branch || ''} onChange={(e) => set('branch', e.target.value)} placeholder="main" /></FieldLabel>
+        </>
+      )}
+
+      {/* ── Per-subtype fields ── */}
+
+      {source === 'cron.linear.unassigned_subtasks' && (
+        <div className="col-span-2">
+          <FieldLabel>Member IDs (optional, comma-separated) <Input value={draft.memberIds || ''} onChange={(e) => set('memberIds', e.target.value)} placeholder="Leave empty to include all active members" /></FieldLabel>
+        </div>
+      )}
+
+      {source === 'cron.linear.stale_tasks' && (
+        <FieldLabel>
+          <span className="flex items-center gap-1">
+            Stale Threshold (days)
+            <span title="Tasks not updated in this many days will be flagged.">
+              <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+            </span>
+          </span>
+          <Input type="number" min="1" max="365" value={draft.staleDays ?? 7} onChange={(e) => set('staleDays', Number(e.target.value))} />
+        </FieldLabel>
+      )}
+
+      {source === 'cron.linear.overdue_tasks' && (
+        <FieldLabel>
+          <span className="flex items-center gap-1">
+            Min Priority
+            <span title="Only include tasks at or above this priority level. Linear: Urgent > High > Medium > Low.">
+              <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+            </span>
+          </span>
+          <Select value={draft.priorityFilter ?? '0'} onChange={(e) => set('priorityFilter', e.target.value)}>
+            <option value="0">Any</option>
+            <option value="1">Urgent</option>
+            <option value="2">High</option>
+            <option value="3">Medium</option>
+          </Select>
+        </FieldLabel>
+      )}
+
+      {source === 'cron.github.stale_prs' && (
+        <FieldLabel>
+          <span className="flex items-center gap-1">
+            Stale Threshold (days)
+            <span title="PRs with no activity in this many days will be flagged.">
+              <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+            </span>
+          </span>
+          <Input type="number" min="1" max="365" value={draft.staleDays ?? 7} onChange={(e) => set('staleDays', Number(e.target.value))} />
+        </FieldLabel>
+      )}
+
+      {source === 'cron.github.failed_checks' && (
+        <FieldLabel>
+          <span className="flex items-center gap-1">
+            Failed For (hours)
+            <span title="PRs with checks failing for at least this many hours will be flagged.">
+              <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+            </span>
+          </span>
+          <Input type="number" min="0" max="720" value={draft.failedForHours ?? 6} onChange={(e) => set('failedForHours', Number(e.target.value))} />
+        </FieldLabel>
+      )}
+
+      {source === 'cron.github.unreviewed_prs' && (
+        <FieldLabel>
+          <span className="flex items-center gap-1">
+            Pending Review (days)
+            <span title="PRs awaiting review for at least this many days will be flagged.">
+              <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+            </span>
+          </span>
+          <Input type="number" min="0" max="365" value={draft.pendingDays ?? 2} onChange={(e) => set('pendingDays', Number(e.target.value))} />
+        </FieldLabel>
+      )}
+
+      {source === 'cron.github.issue_triage' && (
+        <div className="col-span-2 flex gap-6 py-1">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.includeUnlabeled !== false}
+              onChange={(e) => set('includeUnlabeled', e.target.checked)}
+              className="rounded border-border"
+            />
+            Include Unlabeled Issues
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.includeUnassigned !== false}
+              onChange={(e) => set('includeUnassigned', e.target.checked)}
+              className="rounded border-border"
+            />
+            Include Unassigned Issues
+          </label>
+        </div>
+      )}
+
+      {/* Info banner */}
+      <div className="col-span-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400/90">
+        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        <span>{CRON_EVENT_HINTS[source] || 'Cron-triggered event — runs on the configured schedule.'}</span>
+      </div>
+    </>
   );
 }
 

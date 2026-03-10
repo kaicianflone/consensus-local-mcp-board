@@ -8,6 +8,7 @@ import { guardEvaluatePost } from './api/guard.evaluate.post.js';
 import { humanApprovePost } from './api/human.approve.post.js';
 import { resumeWorkflow, runWorkflow } from './workflows/runner.js';
 import { upsertCredential, listCredentials, deleteCredential, getProviderStatus, getCredential } from './db/credentials.js';
+import { initCronScheduler, registerCron, unregisterCron, listCronSchedules, loadPersistedSchedules } from './engine/cron-scheduler.js';
 import crypto from 'node:crypto';
 import { execSync, execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -123,9 +124,44 @@ const TEMPLATE_2 = {
   ]
 };
 
+const TEMPLATE_3 = {
+  boardId: 'workflow-system',
+  nodes: [
+    { id: 'trigger-cron-linear', type: 'trigger', label: 'Cron: Fetch Unassigned Subtasks', config: { source: 'cron.linear.unassigned_subtasks', cronExpression: '*/30 * * * *', team: '', project: '', memberIds: '' } },
+    { id: 'parallel-assignment-review', type: 'group', label: 'Parallel Assignment Review', config: { linkedGuardId: 'guard-assignment', children: [
+      { id: 'agent-skill-matcher', type: 'agent', label: 'Skill Matcher', config: { agentCount: 1, personaMode: 'manual', personaNames: 'skill-matcher', model: 'gpt-5.4', systemPrompt: 'You are a skill-matching specialist. Given unassigned subtasks and team members with their recent task history, identify which member\'s recent work shows the most relevant domain expertise for each subtask. Return a JSON array of { subtaskId, assigneeId, assigneeName, reasoning } for each subtask.' } },
+      { id: 'agent-load-balancer', type: 'agent', label: 'Load Balancer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'load-balancer', model: 'gpt-5.4', systemPrompt: 'You are a workload distribution analyst. Review the team members and their recent task counts. Propose assignments that distribute work evenly while respecting skill requirements. Flag any member who appears overloaded. Return a JSON array of { subtaskId, assigneeId, assigneeName, reasoning }.' } },
+      { id: 'agent-priority-analyst', type: 'agent', label: 'Priority Analyst', config: { agentCount: 1, personaMode: 'manual', personaNames: 'priority-analyst', model: 'gpt-5.4', systemPrompt: 'You are a task priority analyst. Ensure high-priority subtasks are assigned to the most capable and available members based on their recent work quality and availability. Return a JSON array of { subtaskId, assigneeId, assigneeName, reasoning }.' } }
+    ] } },
+    { id: 'guard-assignment', type: 'guard', label: 'Assignment Guard', config: {
+      guardType: 'agent_action',
+      quorum: 0.6,
+      riskThreshold: 0.7,
+      hitlThreshold: 0.6,
+      blockAboveRisk: 0.92,
+      numberOfReviewers: 3,
+      policyPack: 'task-assignment',
+      irreversibleDefault: false,
+      evaluationRubric: JSON.stringify({
+        evaluation_criteria: [
+          'assignments match member expertise based on recent work',
+          'workload is distributed evenly across team members',
+          'high-priority subtasks are assigned to available and capable members',
+          'no member is assigned more tasks than they can handle',
+          'all unassigned subtasks have a proposed assignee'
+        ]
+      }),
+      actionType: 'task_assignment'
+    } },
+    { id: 'human-approval-assignment', type: 'hitl', label: 'Human Approval (optional)', config: { channel: 'slack', mode: 'yes-no', threshold: 0.7 } },
+    { id: 'action-assign-subtasks', type: 'action', label: 'Assign Linear Subtasks', config: { action: 'linear.assign_subtasks', requireGuardPass: true } }
+  ]
+};
+
 const WORKFLOW_TEMPLATES: Record<string, { name: string; definition: any }> = {
   'template-github-pr': { name: 'Template 1 - GitHub PR Merge Guard', definition: TEMPLATE_1 },
   'template-linear-tasks': { name: 'Template 2 - Linear Task Decomposition', definition: TEMPLATE_2 },
+  'template-linear-assign': { name: 'Template 3 - Cron: Auto-Assign Linear Subtasks', definition: TEMPLATE_3 },
 };
 
 function validateWorkflowDefinition(definition: any) {
@@ -530,94 +566,6 @@ app.post('/api/mcp/tool/:name', async (req, res) => {
   }
 });
 
-// ── Reputation & Slashing Settings API ──
-
-const DEFAULT_REPUTATION_CONFIG = {
-  faucet: {
-    initialReputation: 100.0,
-    minReputation: 0.0,
-    maxReputation: 100.0,
-    dripAmount: 2.0,
-    dripTrigger: 'consensus_match',
-    decayRate: 1.0,
-    decayInterval: 'per_round',
-  },
-  slashing: {
-    enabled: true,
-    rules: [
-      { id: 'consensus_disagree', label: 'Consensus Disagreement', description: 'Agent voted opposite to final consensus outcome', penalty: 5.0, enabled: true },
-      { id: 'low_confidence_wrong', label: 'Low Confidence + Wrong', description: 'Agent had low confidence (<0.3) and voted incorrectly', penalty: 8.0, enabled: true },
-      { id: 'high_risk_miss', label: 'High Risk Miss', description: 'Agent marked low risk on a payload that was blocked', penalty: 10.0, enabled: true },
-      { id: 'timeout', label: 'Response Timeout', description: 'Agent failed to respond within the allotted time', penalty: 3.0, enabled: false },
-      { id: 'repeated_rewrite', label: 'Repeated Rewrite', description: 'Agent requested rewrite 3+ times in a row', penalty: 4.0, enabled: false },
-    ],
-  },
-  persona: {
-    archetypeBonus: 0.05,
-    diversityWeight: 0.1,
-    minPersonasForBonus: 3,
-  },
-};
-
-function getReputationConfig(): typeof DEFAULT_REPUTATION_CONFIG {
-  db.exec("CREATE TABLE IF NOT EXISTS _internal_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  const row = db.prepare("SELECT value FROM _internal_config WHERE key = 'reputation_config'").get() as { value: string } | undefined;
-  if (row) {
-    try {
-      const stored = JSON.parse(row.value);
-      const storedRules = Array.isArray(stored.slashing?.rules) ? stored.slashing.rules : [];
-      const mergedRules = DEFAULT_REPUTATION_CONFIG.slashing.rules.map(defaultRule => {
-        const override = storedRules.find((r: any) => r.id === defaultRule.id);
-        return override ? { ...defaultRule, ...override } : defaultRule;
-      });
-      return {
-        faucet: { ...DEFAULT_REPUTATION_CONFIG.faucet, ...(stored.faucet || {}) },
-        slashing: {
-          enabled: stored.slashing?.enabled ?? DEFAULT_REPUTATION_CONFIG.slashing.enabled,
-          rules: mergedRules,
-        },
-        persona: { ...DEFAULT_REPUTATION_CONFIG.persona, ...(stored.persona || {}) },
-      };
-    } catch {
-      return DEFAULT_REPUTATION_CONFIG;
-    }
-  }
-  return DEFAULT_REPUTATION_CONFIG;
-}
-
-function saveReputationConfig(config: any) {
-  db.exec("CREATE TABLE IF NOT EXISTS _internal_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  const existing = db.prepare("SELECT key FROM _internal_config WHERE key = 'reputation_config'").get();
-  const json = JSON.stringify(config);
-  if (existing) {
-    db.prepare("UPDATE _internal_config SET value = ? WHERE key = 'reputation_config'").run(json);
-  } else {
-    db.prepare("INSERT INTO _internal_config(key, value) VALUES (?, ?)").run('reputation_config', json);
-  }
-}
-
-app.get('/api/settings/reputation', (_req, res) => {
-  try {
-    res.json({ config: getReputationConfig() });
-  } catch (e: any) {
-    res.status(500).json(err('REPUTATION_CONFIG_FAILED', 'Failed to load reputation config', e?.message));
-  }
-});
-
-app.put('/api/settings/reputation', (req, res) => {
-  try {
-    const current = getReputationConfig();
-    const merged = { ...current, ...req.body };
-    if (req.body.faucet) merged.faucet = { ...current.faucet, ...req.body.faucet };
-    if (req.body.slashing) merged.slashing = { ...current.slashing, ...req.body.slashing };
-    if (req.body.persona) merged.persona = { ...current.persona, ...req.body.persona };
-    saveReputationConfig(merged);
-    res.json({ config: merged });
-  } catch (e: any) {
-    res.status(400).json(err('REPUTATION_CONFIG_UPDATE_FAILED', 'Failed to update reputation config', e?.message));
-  }
-});
-
 // ── Credentials Settings API ──
 
 app.get('/api/settings/credentials', (_req, res) => {
@@ -669,18 +617,24 @@ const VALID_ADAPTERS: Record<string, string> = {
   gchat: '@chat-adapter/gchat',
   discord: '@chat-adapter/discord',
   telegram: '@chat-adapter/telegram',
-  linear: '@linear/sdk',
+  github: '',    // no npm package — fake install marks as enabled
+  linear: '',    // no npm package — direct GraphQL fetch, fake install
 };
 
 function getInstalledAdapters(): Record<string, boolean> {
   const status: Record<string, boolean> = {};
   for (const [id, pkg] of Object.entries(VALID_ADAPTERS)) {
-    try {
-      require.resolve(pkg);
-      status[id] = true;
-    } catch {
+    if (!pkg) {
       const cred = getCredential(db, 'adapter', id);
       status[id] = cred === 'installed';
+    } else {
+      try {
+        require.resolve(pkg);
+        status[id] = true;
+      } catch {
+        const cred = getCredential(db, 'adapter', id);
+        status[id] = cred === 'installed';
+      }
     }
   }
   return status;
@@ -699,25 +653,29 @@ app.post('/api/settings/adapters/install', async (req, res) => {
     const body = z.object({ adapter: z.string().min(1) }).parse(req.body || {});
     console.log(`[adapter] Request to install: ${body.adapter}`);
     const pkg = VALID_ADAPTERS[body.adapter];
-    if (!pkg) {
+    if (!(body.adapter in VALID_ADAPTERS)) {
       console.error(`[adapter] Unknown adapter: ${body.adapter}`);
       return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}. Valid: ${Object.keys(VALID_ADAPTERS).join(', ')}`));
     }
 
-    const rootDir = path.resolve(process.cwd()); // Changed to current directory to ensure it installs in server's node_modules if needed, or check workspace root
-    console.log(`[adapter] Installing ${pkg} in ${rootDir}...`);
-    
+    const rootDir = path.resolve(process.cwd());
+    console.log(`[adapter] Installing ${body.adapter} in ${rootDir}...`);
+
     let installOutput = '';
     let installed = false;
-    try {
-      // Use --no-save to avoid modifying package.json in dev-only iteration if desired, or just install
-      installOutput = execSync(`npm install chat ${pkg} 2>&1`, { cwd: rootDir, timeout: 90000, encoding: 'utf8' });
-      console.log(`[adapter] Install output: ${installOutput}`);
+    if (!pkg) {
+      // No npm package needed — just mark as enabled via credential
       installed = true;
-    } catch (e: any) {
-      installOutput = e?.stdout || e?.stderr || e?.message || 'Install failed';
-      console.error(`[adapter] Install failed: ${installOutput}`);
-      installed = false;
+    } else {
+      try {
+        installOutput = execSync(`npm install chat ${pkg} 2>&1`, { cwd: rootDir, timeout: 90000, encoding: 'utf8' });
+        console.log(`[adapter] Install output: ${installOutput}`);
+        installed = true;
+      } catch (e: any) {
+        installOutput = e?.stdout || e?.stderr || e?.message || 'Install failed';
+        console.error(`[adapter] Install failed: ${installOutput}`);
+        installed = false;
+      }
     }
 
     upsertCredential(db, 'adapter', body.adapter, installed ? 'installed' : 'failed');
@@ -740,12 +698,14 @@ app.post('/api/settings/adapters/uninstall', async (req, res) => {
   try {
     const body = z.object({ adapter: z.string().min(1) }).parse(req.body || {});
     const pkg = VALID_ADAPTERS[body.adapter];
-    if (!pkg) return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}`));
+    if (!(body.adapter in VALID_ADAPTERS)) return res.status(400).json(err('INVALID_ADAPTER', `Unknown adapter: ${body.adapter}`));
 
     const rootDir = path.resolve(process.cwd(), '..');
-    try {
-      execSync(`npm uninstall ${pkg} 2>&1`, { cwd: rootDir, timeout: 30000, encoding: 'utf8' });
-    } catch {
+    if (pkg) {
+      try {
+        execSync(`npm uninstall ${pkg} 2>&1`, { cwd: rootDir, timeout: 30000, encoding: 'utf8' });
+      } catch {
+      }
     }
 
     deleteCredential(db, 'adapter', body.adapter);
@@ -758,6 +718,33 @@ app.post('/api/settings/adapters/uninstall', async (req, res) => {
     const code = e?.name === 'ZodError' ? 'INVALID_INPUT' : 'ADAPTER_UNINSTALL_FAILED';
     res.status(toHttpStatus(code)).json(err(code, 'Failed to uninstall adapter', e?.message));
   }
+});
+
+// ── Cron Schedule Management ──
+
+app.get('/api/cron', (_req, res) => {
+  res.json({ schedules: listCronSchedules() });
+});
+
+app.post('/api/workflows/:id/cron', (req, res) => {
+  try {
+    const workflow = getWorkflow(req.params.id) as WorkflowRecord | undefined;
+    if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
+
+    const definition = typeof workflow.definition_json === 'string' ? JSON.parse(workflow.definition_json) : workflow.definition_json;
+    const triggerNode = (definition?.nodes || []).find((n: any) => n.type === 'trigger');
+    const cronExpression = req.body?.cronExpression || triggerNode?.config?.cronExpression || '*/30 * * * *';
+
+    const entry = registerCron(req.params.id, cronExpression);
+    res.json({ ok: true, schedule: entry });
+  } catch (e: any) {
+    res.status(500).json(err('CRON_REGISTER_FAILED', 'Failed to register cron schedule', e?.message));
+  }
+});
+
+app.delete('/api/workflows/:id/cron', (req, res) => {
+  const removed = unregisterCron(req.params.id);
+  res.json({ ok: true, removed });
 });
 
 // ── GitHub Webhook Receiver ──
@@ -775,6 +762,7 @@ function mapGitHubEventToSource(event: string, action?: string): string | null {
   const mapping: Record<string, string> = {
     'pull_request:opened': 'github.pr.opened',
     'pull_request:synchronize': 'github.pr.updated',
+    'pull_request:review_requested': 'github.pr.review_requested',
     'pull_request:closed': 'github.pr.closed',
     'push': 'github.commit',
     'issues:opened': 'github.issue.opened',
@@ -869,8 +857,162 @@ app.post('/api/webhooks/github', async (req, res) => {
   }
 });
 
+// ── Linear Webhook Receiver ──
+
+function mapLinearEventToSource(action: string, type: string): string | null {
+  const mapping: Record<string, string> = {
+    'Issue:create': 'linear.task.created',
+    'Issue:update': 'linear.task.updated',
+    'Comment:create': 'linear.webhook',
+    'Project:update': 'linear.webhook',
+  };
+  return mapping[`${type}:${action}`] || null;
+}
+
+app.post('/api/webhooks/linear', async (req, res) => {
+  try {
+    const body = typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body : JSON.parse(typeof req.body === 'string' ? req.body : req.body.toString('utf8'));
+    const action = String(body.action || '');
+    const type = String(body.type || '');
+    const source = mapLinearEventToSource(action, type);
+
+    if (!source) {
+      return res.status(200).json({ ok: true, matched: false, reason: `Unhandled event: ${type}:${action}` });
+    }
+
+    // Verify Linear webhook signature if configured
+    const rawBody = typeof req.body === 'string' ? req.body : (Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body));
+    const signature = String(req.headers['linear-signature'] || '');
+    const webhookSecret = getCredential(db, 'linear', 'webhook_secret');
+
+    if (webhookSecret) {
+      if (!signature) {
+        return res.status(401).json(err('MISSING_SIGNATURE', 'Webhook secret is configured but no Linear-Signature header was provided'));
+      }
+      const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+      try {
+        if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+          return res.status(401).json(err('INVALID_SIGNATURE', 'Linear webhook signature verification failed'));
+        }
+      } catch {
+        return res.status(401).json(err('INVALID_SIGNATURE', 'Linear webhook signature verification failed'));
+      }
+    }
+
+    const data = body.data || {};
+    const triggerPayload: Record<string, any> = {
+      ok: true,
+      trigger: source,
+      provider: 'linear',
+      task: {
+        id: data.id || '',
+        title: data.title || '',
+        description: data.description || '',
+        state: data.state?.name || '',
+        priority: data.priority ?? 0,
+        assignee: data.assignee?.name || '',
+        team: data.team?.key || data.team?.name || '',
+        labels: (data.labels || []).map((l: any) => l.name || l),
+        url: data.url || '',
+      },
+    };
+
+    const workflows = listWorkflows(1000) as WorkflowRecord[];
+    const matched: Array<{ workflowId: string; runId?: string }> = [];
+
+    for (const wf of workflows) {
+      try {
+        const definition = JSON.parse(wf.definition_json || '{}');
+        const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+        const triggerNode = nodes[0];
+        if (!triggerNode || triggerNode.type !== 'trigger') continue;
+        const triggerSource = triggerNode.config?.source;
+        if (triggerSource !== source) continue;
+
+        // Skip if team is configured and doesn't match
+        const triggerTeam = String(triggerNode.config?.team || '');
+        const eventTeam = triggerPayload.task.team;
+        if (triggerTeam && eventTeam && triggerTeam !== eventTeam) continue;
+
+        const runOpts = { context: { __triggerPayload: triggerPayload } };
+        const out = await runWorkflow(definition, wf.id, runOpts);
+        matched.push({ workflowId: wf.id, runId: out?.runId });
+      } catch (e: any) {
+        console.error(`[webhook:linear] Failed to run workflow ${wf.id}:`, e?.message);
+        matched.push({ workflowId: wf.id });
+      }
+    }
+
+    res.json({ ok: true, event: `${type}:${action}`, source, matched });
+  } catch (e: any) {
+    res.status(500).json(err('WEBHOOK_FAILED', 'Failed to process Linear webhook', e?.message));
+  }
+});
+
 // ── Adapter-Specific Inbound Webhooks ──
 // These endpoints receive replies from chat surfaces and route them to human.approve.
+// They also dispatch chat.* workflow triggers when a matching workflow exists.
+
+// Shared helper: attempt to trigger chat.* workflows from inbound chat messages.
+// Returns the number of workflows matched (0 = none). Does NOT block HITL processing.
+async function tryChatWorkflowTrigger(adapter: string, text: string, userId: string, channel?: string): Promise<number> {
+  // Classify the chat event type
+  let chatSource: string;
+  if (text.startsWith('/')) {
+    chatSource = 'chat.command';
+  } else if (/\b@\w+/.test(text)) {
+    chatSource = 'chat.mention';
+  } else {
+    chatSource = 'chat.message';
+  }
+
+  const triggerPayload = {
+    ok: true,
+    trigger: chatSource,
+    adapter,
+    channel: channel || adapter,
+    sender: userId,
+    text,
+  };
+
+  const workflows = listWorkflows(1000) as WorkflowRecord[];
+  let matchCount = 0;
+
+  for (const wf of workflows) {
+    try {
+      const definition = JSON.parse(wf.definition_json || '{}');
+      const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+      const triggerNode = nodes[0];
+      if (!triggerNode || triggerNode.type !== 'trigger') continue;
+      const triggerSource = triggerNode.config?.source;
+
+      // Match exact source or any chat.* wildcard
+      if (triggerSource !== chatSource && triggerSource !== 'chat.*') continue;
+
+      // Filter by channel if configured
+      const triggerChannel = triggerNode.config?.channel;
+      if (triggerChannel && triggerChannel !== adapter) continue;
+
+      // Filter by matchText if configured (substring match)
+      const matchText = triggerNode.config?.matchText;
+      if (matchText && !text.includes(matchText)) continue;
+
+      // Filter by fromUsers if configured
+      const fromUsers = String(triggerNode.config?.fromUsers || '');
+      if (fromUsers) {
+        const allowed = fromUsers.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (allowed.length && !allowed.includes(userId)) continue;
+      }
+
+      const runOpts = { context: { __triggerPayload: triggerPayload } };
+      await runWorkflow(definition, wf.id, runOpts);
+      matchCount++;
+    } catch (e: any) {
+      console.error(`[webhook:chat] Failed to run workflow ${wf.id}:`, e?.message);
+    }
+  }
+  return matchCount;
+}
 
 // Slack Events API handler
 app.post('/api/webhooks/slack/events', async (req, res) => {
@@ -894,6 +1036,9 @@ app.post('/api/webhooks/slack/events', async (req, res) => {
 
     const text = String(event.text || '').trim();
     const userId = event.user || '';
+
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('slack', text, userId, event.channel).catch(() => {});
 
     // Extract runId from message metadata or thread context
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
@@ -946,6 +1091,9 @@ app.post('/api/webhooks/teams/activity', async (req, res) => {
     const text = String(activity.text || '').replace(/<at>[^<]*<\/at>/g, '').trim();
     const userId = activity.from?.id || activity.from?.name || 'teams-user';
 
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('teams', text, userId).catch(() => {});
+
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
     let runId = runIdMatch?.[1] || '';
 
@@ -988,6 +1136,9 @@ app.post('/api/webhooks/discord/interactions', async (req, res) => {
     const text = String(body.data?.options?.[0]?.value || body.content || '').trim();
     const userId = body.member?.user?.id || body.user?.id || 'discord-user';
 
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('discord', text, userId).catch(() => {});
+
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
     let runId = runIdMatch?.[1] || '';
 
@@ -1026,6 +1177,9 @@ app.post('/api/webhooks/telegram', async (req, res) => {
     const text = String(message.text).trim();
     const userId = String(message.from?.id || 'telegram-user');
 
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('telegram', text, userId).catch(() => {});
+
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
     let runId = runIdMatch?.[1] || '';
 
@@ -1058,13 +1212,20 @@ app.post('/api/webhooks/telegram', async (req, res) => {
 app.post('/api/webhooks/chat/:adapter', async (req, res) => {
   try {
     const adapter = req.params.adapter;
+    const rawBody = req.body ?? {};
+
+    // Dispatch chat.* workflow triggers if text is present (non-blocking)
+    if (rawBody.replyText || rawBody.text) {
+      tryChatWorkflowTrigger(adapter, String(rawBody.replyText || rawBody.text), String(rawBody.approver || 'unknown')).catch(() => {});
+    }
+
     const body = z.object({
       runId: z.string(),
       replyText: z.string(),
       approver: z.string().default('human'),
       idempotencyKey: z.string().optional(),
       boardId: z.string().optional()
-    }).parse(req.body ?? {});
+    }).parse(rawBody);
 
     const out = await humanApprovePost({
       runId: body.runId,
@@ -1107,4 +1268,17 @@ const PORT = parseInt(process.env.PORT || '4010', 10);
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`local-mcp-board on http://127.0.0.1:${PORT}`);
   bootstrapConsensusTools();
+
+  // Initialize cron scheduler: load persisted schedules and wire up workflow triggering
+  initCronScheduler(db, async (workflowId: string) => {
+    const workflow = getWorkflow(workflowId) as WorkflowRecord | undefined;
+    if (!workflow) {
+      console.warn(`[cron] Workflow ${workflowId} not found — skipping`);
+      return;
+    }
+    console.log(`[cron] Triggering workflow ${workflowId} (${workflow.name})`);
+    const definition = typeof workflow.definition_json === 'string' ? JSON.parse(workflow.definition_json) : workflow.definition_json;
+    await runWorkflow(definition, workflowId, { context: { __triggerPayload: { ok: true, trigger: 'cron', source: 'cron-scheduler' } } });
+  });
+  loadPersistedSchedules(db);
 });

@@ -16,8 +16,12 @@ import {
 } from '../db/store.js';
 import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
 import { sendHumanApprovalPrompt, type ChatPrompt } from '../adapters/chat-sdk.js';
-import { evaluateViaConsensusTools, resolveVerdictsViaBoard, computeReputationFromLedger, type AgentVerdict } from '../adapters/consensus-tools.js';
+import { evaluateViaConsensusTools, resolveVerdictsViaBoard, type AgentVerdict } from '../adapters/consensus-tools.js';
 import { registerPendingApproval } from '../engine/hitl-tracker.js';
+import { fetchUnassignedSubtasks, fetchTeamMembers, assignIssue, fetchStaleTasks, fetchOverdueTasks } from '../adapters/linear-client.js';
+import { fetchStalePRs, fetchFailedChecksPRs, fetchUnreviewedPRs, fetchTriageIssues } from '../adapters/github-client.js';
+import { getCredential } from '../db/credentials.js';
+import { db } from '../db/store.js';
 
 // ── GitHub PR fetcher via gh CLI ──
 
@@ -477,6 +481,82 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         warning: !node.config?.team ? 'team is not configured — configure it in the trigger node or Settings → Linear' : undefined,
       };
     }
+    if (String(source).startsWith('cron.')) {
+      // If the cron scheduler already pre-resolved typed data, use it
+      if (context.__triggerPayload?.ok && context.__triggerPayload?.event) return context.__triggerPayload;
+
+      const cronEvent = source;
+
+      // ── Linear cron events ──
+      if (cronEvent.startsWith('cron.linear.')) {
+        const apiKey = getCredential(db, 'linear', 'api_key');
+        if (!apiKey) {
+          return { ok: false, trigger: 'cron', event: cronEvent, error: 'Linear API key not configured — add it in Settings → Linear' };
+        }
+        const teamId = node.config?.team || getCredential(db, 'linear', 'team_id') || '';
+        if (!teamId) {
+          return { ok: false, trigger: 'cron', event: cronEvent, error: 'Linear team ID not configured — set it in the trigger node or Settings → Linear' };
+        }
+
+        switch (cronEvent) {
+          case 'cron.linear.unassigned_subtasks': {
+            const memberIds = node.config?.memberIds
+              ? String(node.config.memberIds).split(',').map((s: string) => s.trim()).filter(Boolean)
+              : undefined;
+            const [subtasks, members] = await Promise.all([
+              fetchUnassignedSubtasks(apiKey, teamId, node.config?.project || undefined),
+              fetchTeamMembers(apiKey, teamId, memberIds),
+            ]);
+            return { ok: true, trigger: 'cron', provider: 'linear', event: cronEvent, team: teamId, subtasks, members, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.linear.stale_tasks': {
+            const staleDays = Number(node.config?.staleDays) || 7;
+            const tasks = await fetchStaleTasks(apiKey, teamId, staleDays, node.config?.project || undefined);
+            return { ok: true, trigger: 'cron', provider: 'linear', event: cronEvent, team: teamId, staleDays, tasks, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.linear.overdue_tasks': {
+            const priorityFilter = Number(node.config?.priorityFilter) || 0;
+            const tasks = await fetchOverdueTasks(apiKey, teamId, node.config?.project || undefined, priorityFilter || undefined);
+            return { ok: true, trigger: 'cron', provider: 'linear', event: cronEvent, team: teamId, tasks, fetchedAt: new Date().toISOString() };
+          }
+        }
+      }
+
+      // ── GitHub cron events ──
+      if (cronEvent.startsWith('cron.github.')) {
+        const repo = node.config?.repo || '';
+        if (!repo) {
+          return { ok: false, trigger: 'cron', event: cronEvent, error: 'Repository not configured — set it in the trigger node (owner/repo)' };
+        }
+        const baseBranch = node.config?.branch || undefined;
+
+        switch (cronEvent) {
+          case 'cron.github.stale_prs': {
+            const staleDays = Number(node.config?.staleDays) || 7;
+            const prs = fetchStalePRs(repo, staleDays, baseBranch);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, staleDays, prs, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.github.failed_checks': {
+            const failedForHours = Number(node.config?.failedForHours) || 6;
+            const prs = fetchFailedChecksPRs(repo, failedForHours, baseBranch);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, failedForHours, prs, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.github.unreviewed_prs': {
+            const pendingDays = Number(node.config?.pendingDays) || 2;
+            const prs = fetchUnreviewedPRs(repo, pendingDays, baseBranch);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, pendingDays, prs, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.github.issue_triage': {
+            const includeUnlabeled = node.config?.includeUnlabeled !== false;
+            const includeUnassigned = node.config?.includeUnassigned !== false;
+            const issues = fetchTriageIssues(repo, includeUnlabeled, includeUnassigned);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, issues, fetchedAt: new Date().toISOString() };
+          }
+        }
+      }
+
+      return { ok: true, trigger: 'cron', event: cronEvent };
+    }
     return { ok: true, trigger: source };
   }
 
@@ -596,9 +676,6 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         riskThreshold,
         weightingMode,
       );
-
-      // Sync participant reputation from ledger after resolution
-      syncReputationFromLedger(ids.boardId, verdicts);
 
       // Post-resolution escalation: blockAboveRisk overrides REWRITE → BLOCK
       // when combined risk exceeds the guard's hard ceiling
@@ -804,10 +881,106 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
       };
     }
 
+    if (actionName === 'linear.assign_subtasks') {
+      // Enforce guard pass requirement
+      if (node.config?.requireGuardPass) {
+        const guardOutput = Object.values(context).find((v: any) => v?.decision && v?.risk !== undefined) as any;
+        if (guardOutput?.decision === 'BLOCK') {
+          return { ok: false, action: actionName, skipped: true, reason: 'Guard decision was BLOCK — assignment aborted' };
+        }
+      }
+
+      // Find subtasks from trigger output
+      const triggerOutput = Object.values(context).find((v: any) => v?.subtasks) as any;
+      if (!triggerOutput?.subtasks?.length) {
+        return { ok: true, action: actionName, assigned: 0, note: 'No unassigned subtasks found' };
+      }
+
+      const apiKey = getCredential(db, 'linear', 'api_key');
+      if (!apiKey) {
+        return { ok: false, action: actionName, error: 'Linear API key not configured' };
+      }
+
+      // Extract assignment proposals from agent verdict reasons
+      const assignments = parseAssignmentPlan(context);
+      if (!assignments.length) {
+        return { ok: true, action: actionName, assigned: 0, note: 'No assignment proposals found in agent verdicts' };
+      }
+
+      const results = [];
+      for (const a of assignments) {
+        try {
+          const result = await assignIssue(apiKey, a.issueId, a.assigneeId);
+          results.push({ issueId: a.issueId, assigneeId: a.assigneeId, ok: result.success });
+        } catch (e: any) {
+          results.push({ issueId: a.issueId, assigneeId: a.assigneeId, ok: false, error: e?.message });
+        }
+      }
+      return {
+        ok: true,
+        action: actionName,
+        assigned: results.filter(r => r.ok).length,
+        total: assignments.length,
+        results,
+      };
+    }
+
     return { ok: true, action: actionName, inputKeys: Object.keys(context) };
   }
 
   return { ok: true };
+}
+
+// ── Parse assignment proposals from agent verdict reasons ──
+// Agents return JSON arrays of { subtaskId, assigneeId, assigneeName, reasoning }.
+// We scan all verdict events in context to extract and deduplicate assignments,
+// picking the most commonly proposed assignee per subtask (majority vote).
+
+function parseAssignmentPlan(context: Record<string, any>): { issueId: string; assigneeId: string }[] {
+  const proposals: { subtaskId: string; assigneeId: string }[] = [];
+
+  // Collect proposals from all agent/group outputs in context
+  for (const value of Object.values(context)) {
+    // Agent node output has a votes array with reason fields
+    const votes = value?.votes || (value?.results ? Object.values(value.results).flatMap((r: any) => r?.votes || []) : []);
+    for (const vote of votes) {
+      const reason = vote?.reason || '';
+      // Try to parse JSON array from the reason text
+      const jsonMatch = reason.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        try {
+          const arr = JSON.parse(jsonMatch[0]);
+          for (const item of arr) {
+            if (item.subtaskId && item.assigneeId) {
+              proposals.push({ subtaskId: item.subtaskId, assigneeId: item.assigneeId });
+            }
+          }
+        } catch { /* not valid JSON — skip */ }
+      }
+    }
+  }
+
+  // Majority vote: for each subtask, pick the most commonly proposed assignee
+  const bySubtask = new Map<string, Map<string, number>>();
+  for (const p of proposals) {
+    if (!bySubtask.has(p.subtaskId)) bySubtask.set(p.subtaskId, new Map());
+    const counts = bySubtask.get(p.subtaskId)!;
+    counts.set(p.assigneeId, (counts.get(p.assigneeId) || 0) + 1);
+  }
+
+  const assignments: { issueId: string; assigneeId: string }[] = [];
+  for (const [subtaskId, counts] of bySubtask) {
+    let bestAssignee = '';
+    let bestCount = 0;
+    for (const [assigneeId, count] of counts) {
+      if (count > bestCount) { bestAssignee = assigneeId; bestCount = count; }
+    }
+    if (bestAssignee) {
+      assignments.push({ issueId: subtaskId, assigneeId: bestAssignee });
+    }
+  }
+
+  return assignments;
 }
 
 function parseParticipantMetadata(p: any): Record<string, any> {
@@ -873,26 +1046,3 @@ async function resolvePersonas(boardId: string, agentCount: number, personaMode:
   return personas;
 }
 
-/**
- * After a board resolution, sync participant reputation from the consensus-tools ledger.
- * This reads the ledger file and updates each agent's reputation in our DB.
- * Weight (manual override) is left untouched.
- */
-function syncReputationFromLedger(boardId: string, verdicts: AgentVerdict[]) {
-  try {
-    const participants = listParticipants(boardId) as any[];
-    const agentNames = new Set(verdicts.map(v => v.evaluator));
-
-    for (const name of agentNames) {
-      const participant = participants.find((p: any) => p.subject_id === name);
-      if (!participant) continue;
-
-      const ledgerRep = computeReputationFromLedger(undefined, name);
-      if (ledgerRep !== Number(participant.reputation)) {
-        updateParticipant(participant.id, { reputation: ledgerRep });
-      }
-    }
-  } catch (e: any) {
-    console.warn(`[runner] Failed to sync reputation from ledger: ${e?.message?.split('\\n')[0]}`);
-  }
-}
