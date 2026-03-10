@@ -5,7 +5,7 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 // Import after mocking fetch
-const { fetchUnassignedSubtasks, fetchTeamMembers, assignIssue } = await import('../server/src/adapters/linear-client.js');
+const { fetchUnassignedSubtasks, fetchTeamMembers, assignIssue, fetchStaleTasks, fetchOverdueTasks } = await import('../server/src/adapters/linear-client.js');
 
 function mockGraphQLResponse(data: any) {
   mockFetch.mockResolvedValueOnce({
@@ -159,6 +159,142 @@ describe('Linear GraphQL Client', () => {
 
       expect(result).toHaveLength(2);
       expect(result.map(m => m.name)).toEqual(['Alice', 'Charlie']);
+    });
+  });
+
+  describe('fetchStaleTasks', () => {
+    it('returns empty array when apiKey is missing', async () => {
+      const result = await fetchStaleTasks('', 'team-1', 7);
+      expect(result).toEqual([]);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('returns empty array when staleDays < 1', async () => {
+      const result = await fetchStaleTasks('lin_api_xxx', 'team-1', 0);
+      expect(result).toEqual([]);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('fetches and parses stale tasks with updatedAt filter', async () => {
+      mockGraphQLResponse({
+        issues: {
+          nodes: [
+            {
+              id: 'issue-1',
+              title: 'Old task',
+              priority: 2,
+              state: { name: 'In Progress', type: 'started' },
+              updatedAt: '2026-02-01T00:00:00Z',
+              assignee: { id: 'user-1', name: 'Alice' },
+              labels: { nodes: [{ name: 'backend' }] },
+            },
+            {
+              id: 'issue-2',
+              title: 'Forgotten task',
+              priority: 0,
+              state: { name: 'Backlog', type: 'backlog' },
+              updatedAt: '2026-01-15T00:00:00Z',
+              assignee: null,
+              labels: { nodes: [] },
+            },
+          ],
+        },
+      });
+
+      const result = await fetchStaleTasks('lin_api_xxx', 'team-1', 7);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 'issue-1',
+        title: 'Old task',
+        priority: 2,
+        state: { name: 'In Progress', type: 'started' },
+        updatedAt: '2026-02-01T00:00:00Z',
+        assignee: { id: 'user-1', name: 'Alice' },
+        labels: ['backend'],
+      });
+      expect(result[1].assignee).toBeNull();
+      expect(result[1].labels).toEqual([]);
+
+      // Verify the filter includes updatedAt and state type exclusion
+      const [, opts] = mockFetch.mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.variables.filter.updatedAt.lt).toBeDefined();
+      expect(body.variables.filter.state.type.nin).toEqual(['completed', 'canceled']);
+    });
+
+    it('includes project filter when projectId is provided', async () => {
+      mockGraphQLResponse({ issues: { nodes: [] } });
+
+      await fetchStaleTasks('lin_api_xxx', 'team-1', 7, 'proj-1');
+
+      const [, opts] = mockFetch.mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.variables.filter.project.id.eq).toBe('proj-1');
+    });
+  });
+
+  describe('fetchOverdueTasks', () => {
+    it('returns empty array when apiKey is missing', async () => {
+      const result = await fetchOverdueTasks('', 'team-1');
+      expect(result).toEqual([]);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('fetches overdue tasks with dueDate filter', async () => {
+      mockGraphQLResponse({
+        issues: {
+          nodes: [
+            {
+              id: 'issue-1',
+              title: 'Overdue feature',
+              dueDate: '2026-02-01',
+              priority: 1,
+              state: { name: 'In Progress' },
+              assignee: { id: 'user-1', name: 'Alice' },
+              labels: { nodes: [{ name: 'urgent' }] },
+            },
+          ],
+        },
+      });
+
+      const result = await fetchOverdueTasks('lin_api_xxx', 'team-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        id: 'issue-1',
+        title: 'Overdue feature',
+        dueDate: '2026-02-01',
+        priority: 1,
+        state: { name: 'In Progress' },
+        assignee: { id: 'user-1', name: 'Alice' },
+        labels: ['urgent'],
+      });
+
+      const [, opts] = mockFetch.mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.variables.filter.dueDate.lt).toBeDefined();
+      expect(body.variables.filter.state.type.nin).toEqual(['completed', 'canceled']);
+    });
+
+    it('includes priority filter when provided', async () => {
+      mockGraphQLResponse({ issues: { nodes: [] } });
+
+      await fetchOverdueTasks('lin_api_xxx', 'team-1', undefined, 2);
+
+      const [, opts] = mockFetch.mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.variables.filter.priority.lte).toBe(2);
+    });
+
+    it('omits priority filter when 0', async () => {
+      mockGraphQLResponse({ issues: { nodes: [] } });
+
+      await fetchOverdueTasks('lin_api_xxx', 'team-1', undefined, 0);
+
+      const [, opts] = mockFetch.mock.calls[0];
+      const body = JSON.parse(opts.body);
+      expect(body.variables.filter.priority).toBeUndefined();
     });
   });
 

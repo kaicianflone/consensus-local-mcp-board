@@ -139,6 +139,124 @@ export async function fetchTeamMembers(
   }));
 }
 
+// ── Fetch stale tasks (not updated in N days, excluding completed/cancelled) ──
+
+export type LinearStaleTask = {
+  id: string;
+  title: string;
+  priority: number;
+  state: { name: string; type: string };
+  updatedAt: string;
+  assignee: { id: string; name: string } | null;
+  labels: string[];
+};
+
+export async function fetchStaleTasks(
+  apiKey: string,
+  teamId: string,
+  staleDays: number,
+  projectId?: string,
+): Promise<LinearStaleTask[]> {
+  if (!apiKey || !teamId || staleDays < 1) return [];
+
+  const cutoff = new Date(Date.now() - staleDays * 86_400_000).toISOString();
+  const filter: Record<string, any> = {
+    team: { id: { eq: teamId } },
+    updatedAt: { lt: cutoff },
+    state: { type: { nin: ['completed', 'canceled'] } },
+  };
+  if (projectId) {
+    filter.project = { id: { eq: projectId } };
+  }
+
+  const data = await gql<{ issues: { nodes: any[] } }>(apiKey, `
+    query($filter: IssueFilter) {
+      issues(filter: $filter, first: 50) {
+        nodes {
+          id
+          title
+          priority
+          state { name type }
+          updatedAt
+          assignee { id name }
+          labels { nodes { name } }
+        }
+      }
+    }
+  `, { filter });
+
+  return (data.issues?.nodes || []).map((n: any) => ({
+    id: n.id,
+    title: n.title,
+    priority: n.priority ?? 0,
+    state: { name: n.state?.name || '', type: n.state?.type || '' },
+    updatedAt: n.updatedAt || '',
+    assignee: n.assignee ? { id: n.assignee.id, name: n.assignee.name } : null,
+    labels: (n.labels?.nodes || []).map((l: any) => l.name),
+  }));
+}
+
+// ── Fetch overdue tasks (past due date, excluding completed/cancelled) ──
+
+export type LinearOverdueTask = {
+  id: string;
+  title: string;
+  dueDate: string;
+  priority: number;
+  state: { name: string };
+  assignee: { id: string; name: string } | null;
+  labels: string[];
+};
+
+export async function fetchOverdueTasks(
+  apiKey: string,
+  teamId: string,
+  projectId?: string,
+  priorityFilter?: number,
+): Promise<LinearOverdueTask[]> {
+  if (!apiKey || !teamId) return [];
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const filter: Record<string, any> = {
+    team: { id: { eq: teamId } },
+    dueDate: { lt: today },
+    state: { type: { nin: ['completed', 'canceled'] } },
+  };
+  if (projectId) {
+    filter.project = { id: { eq: projectId } };
+  }
+  // Linear priority: 1=urgent, 2=high, 3=medium, 4=low — lower number = higher priority
+  if (priorityFilter && priorityFilter > 0) {
+    filter.priority = { lte: priorityFilter };
+  }
+
+  const data = await gql<{ issues: { nodes: any[] } }>(apiKey, `
+    query($filter: IssueFilter) {
+      issues(filter: $filter, first: 50) {
+        nodes {
+          id
+          title
+          dueDate
+          priority
+          state { name }
+          assignee { id name }
+          labels { nodes { name } }
+        }
+      }
+    }
+  `, { filter });
+
+  return (data.issues?.nodes || []).map((n: any) => ({
+    id: n.id,
+    title: n.title,
+    dueDate: n.dueDate || '',
+    priority: n.priority ?? 0,
+    state: { name: n.state?.name || '' },
+    assignee: n.assignee ? { id: n.assignee.id, name: n.assignee.name } : null,
+    labels: (n.labels?.nodes || []).map((l: any) => l.name),
+  }));
+}
+
 // ── Assign an issue to a team member ──
 
 export async function assignIssue(

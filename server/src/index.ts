@@ -127,7 +127,7 @@ const TEMPLATE_2 = {
 const TEMPLATE_3 = {
   boardId: 'workflow-system',
   nodes: [
-    { id: 'trigger-cron-linear', type: 'trigger', label: 'Cron: Fetch Unassigned Subtasks', config: { source: 'cron', adapter: 'linear', cronExpression: '*/30 * * * *', team: '', project: '', memberIds: '' } },
+    { id: 'trigger-cron-linear', type: 'trigger', label: 'Cron: Fetch Unassigned Subtasks', config: { source: 'cron.linear.unassigned_subtasks', cronExpression: '*/30 * * * *', team: '', project: '', memberIds: '' } },
     { id: 'parallel-assignment-review', type: 'group', label: 'Parallel Assignment Review', config: { linkedGuardId: 'guard-assignment', children: [
       { id: 'agent-skill-matcher', type: 'agent', label: 'Skill Matcher', config: { agentCount: 1, personaMode: 'manual', personaNames: 'skill-matcher', model: 'gpt-5.4', systemPrompt: 'You are a skill-matching specialist. Given unassigned subtasks and team members with their recent task history, identify which member\'s recent work shows the most relevant domain expertise for each subtask. Return a JSON array of { subtaskId, assigneeId, assigneeName, reasoning } for each subtask.' } },
       { id: 'agent-load-balancer', type: 'agent', label: 'Load Balancer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'load-balancer', model: 'gpt-5.4', systemPrompt: 'You are a workload distribution analyst. Review the team members and their recent task counts. Propose assignments that distribute work evenly while respecting skill requirements. Flag any member who appears overloaded. Return a JSON array of { subtaskId, assigneeId, assigneeName, reasoning }.' } },
@@ -762,6 +762,7 @@ function mapGitHubEventToSource(event: string, action?: string): string | null {
   const mapping: Record<string, string> = {
     'pull_request:opened': 'github.pr.opened',
     'pull_request:synchronize': 'github.pr.updated',
+    'pull_request:review_requested': 'github.pr.review_requested',
     'pull_request:closed': 'github.pr.closed',
     'push': 'github.commit',
     'issues:opened': 'github.issue.opened',
@@ -856,8 +857,162 @@ app.post('/api/webhooks/github', async (req, res) => {
   }
 });
 
+// ── Linear Webhook Receiver ──
+
+function mapLinearEventToSource(action: string, type: string): string | null {
+  const mapping: Record<string, string> = {
+    'Issue:create': 'linear.task.created',
+    'Issue:update': 'linear.task.updated',
+    'Comment:create': 'linear.webhook',
+    'Project:update': 'linear.webhook',
+  };
+  return mapping[`${type}:${action}`] || null;
+}
+
+app.post('/api/webhooks/linear', async (req, res) => {
+  try {
+    const body = typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body : JSON.parse(typeof req.body === 'string' ? req.body : req.body.toString('utf8'));
+    const action = String(body.action || '');
+    const type = String(body.type || '');
+    const source = mapLinearEventToSource(action, type);
+
+    if (!source) {
+      return res.status(200).json({ ok: true, matched: false, reason: `Unhandled event: ${type}:${action}` });
+    }
+
+    // Verify Linear webhook signature if configured
+    const rawBody = typeof req.body === 'string' ? req.body : (Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body));
+    const signature = String(req.headers['linear-signature'] || '');
+    const webhookSecret = getCredential(db, 'linear', 'webhook_secret');
+
+    if (webhookSecret) {
+      if (!signature) {
+        return res.status(401).json(err('MISSING_SIGNATURE', 'Webhook secret is configured but no Linear-Signature header was provided'));
+      }
+      const expected = crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+      try {
+        if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+          return res.status(401).json(err('INVALID_SIGNATURE', 'Linear webhook signature verification failed'));
+        }
+      } catch {
+        return res.status(401).json(err('INVALID_SIGNATURE', 'Linear webhook signature verification failed'));
+      }
+    }
+
+    const data = body.data || {};
+    const triggerPayload: Record<string, any> = {
+      ok: true,
+      trigger: source,
+      provider: 'linear',
+      task: {
+        id: data.id || '',
+        title: data.title || '',
+        description: data.description || '',
+        state: data.state?.name || '',
+        priority: data.priority ?? 0,
+        assignee: data.assignee?.name || '',
+        team: data.team?.key || data.team?.name || '',
+        labels: (data.labels || []).map((l: any) => l.name || l),
+        url: data.url || '',
+      },
+    };
+
+    const workflows = listWorkflows(1000) as WorkflowRecord[];
+    const matched: Array<{ workflowId: string; runId?: string }> = [];
+
+    for (const wf of workflows) {
+      try {
+        const definition = JSON.parse(wf.definition_json || '{}');
+        const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+        const triggerNode = nodes[0];
+        if (!triggerNode || triggerNode.type !== 'trigger') continue;
+        const triggerSource = triggerNode.config?.source;
+        if (triggerSource !== source) continue;
+
+        // Skip if team is configured and doesn't match
+        const triggerTeam = String(triggerNode.config?.team || '');
+        const eventTeam = triggerPayload.task.team;
+        if (triggerTeam && eventTeam && triggerTeam !== eventTeam) continue;
+
+        const runOpts = { context: { __triggerPayload: triggerPayload } };
+        const out = await runWorkflow(definition, wf.id, runOpts);
+        matched.push({ workflowId: wf.id, runId: out?.runId });
+      } catch (e: any) {
+        console.error(`[webhook:linear] Failed to run workflow ${wf.id}:`, e?.message);
+        matched.push({ workflowId: wf.id });
+      }
+    }
+
+    res.json({ ok: true, event: `${type}:${action}`, source, matched });
+  } catch (e: any) {
+    res.status(500).json(err('WEBHOOK_FAILED', 'Failed to process Linear webhook', e?.message));
+  }
+});
+
 // ── Adapter-Specific Inbound Webhooks ──
 // These endpoints receive replies from chat surfaces and route them to human.approve.
+// They also dispatch chat.* workflow triggers when a matching workflow exists.
+
+// Shared helper: attempt to trigger chat.* workflows from inbound chat messages.
+// Returns the number of workflows matched (0 = none). Does NOT block HITL processing.
+async function tryChatWorkflowTrigger(adapter: string, text: string, userId: string, channel?: string): Promise<number> {
+  // Classify the chat event type
+  let chatSource: string;
+  if (text.startsWith('/')) {
+    chatSource = 'chat.command';
+  } else if (/\b@\w+/.test(text)) {
+    chatSource = 'chat.mention';
+  } else {
+    chatSource = 'chat.message';
+  }
+
+  const triggerPayload = {
+    ok: true,
+    trigger: chatSource,
+    adapter,
+    channel: channel || adapter,
+    sender: userId,
+    text,
+  };
+
+  const workflows = listWorkflows(1000) as WorkflowRecord[];
+  let matchCount = 0;
+
+  for (const wf of workflows) {
+    try {
+      const definition = JSON.parse(wf.definition_json || '{}');
+      const nodes = Array.isArray(definition?.nodes) ? definition.nodes : [];
+      const triggerNode = nodes[0];
+      if (!triggerNode || triggerNode.type !== 'trigger') continue;
+      const triggerSource = triggerNode.config?.source;
+
+      // Match exact source or any chat.* wildcard
+      if (triggerSource !== chatSource && triggerSource !== 'chat.*') continue;
+
+      // Filter by channel if configured
+      const triggerChannel = triggerNode.config?.channel;
+      if (triggerChannel && triggerChannel !== adapter) continue;
+
+      // Filter by matchText if configured (substring match)
+      const matchText = triggerNode.config?.matchText;
+      if (matchText && !text.includes(matchText)) continue;
+
+      // Filter by fromUsers if configured
+      const fromUsers = String(triggerNode.config?.fromUsers || '');
+      if (fromUsers) {
+        const allowed = fromUsers.split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (allowed.length && !allowed.includes(userId)) continue;
+      }
+
+      const runOpts = { context: { __triggerPayload: triggerPayload } };
+      await runWorkflow(definition, wf.id, runOpts);
+      matchCount++;
+    } catch (e: any) {
+      console.error(`[webhook:chat] Failed to run workflow ${wf.id}:`, e?.message);
+    }
+  }
+  return matchCount;
+}
 
 // Slack Events API handler
 app.post('/api/webhooks/slack/events', async (req, res) => {
@@ -881,6 +1036,9 @@ app.post('/api/webhooks/slack/events', async (req, res) => {
 
     const text = String(event.text || '').trim();
     const userId = event.user || '';
+
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('slack', text, userId, event.channel).catch(() => {});
 
     // Extract runId from message metadata or thread context
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
@@ -933,6 +1091,9 @@ app.post('/api/webhooks/teams/activity', async (req, res) => {
     const text = String(activity.text || '').replace(/<at>[^<]*<\/at>/g, '').trim();
     const userId = activity.from?.id || activity.from?.name || 'teams-user';
 
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('teams', text, userId).catch(() => {});
+
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
     let runId = runIdMatch?.[1] || '';
 
@@ -975,6 +1136,9 @@ app.post('/api/webhooks/discord/interactions', async (req, res) => {
     const text = String(body.data?.options?.[0]?.value || body.content || '').trim();
     const userId = body.member?.user?.id || body.user?.id || 'discord-user';
 
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('discord', text, userId).catch(() => {});
+
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
     let runId = runIdMatch?.[1] || '';
 
@@ -1013,6 +1177,9 @@ app.post('/api/webhooks/telegram', async (req, res) => {
     const text = String(message.text).trim();
     const userId = String(message.from?.id || 'telegram-user');
 
+    // Dispatch chat.* workflow triggers (non-blocking, runs in parallel with HITL)
+    tryChatWorkflowTrigger('telegram', text, userId).catch(() => {});
+
     const runIdMatch = text.match(/run[:\s_]+(\S+)/i);
     let runId = runIdMatch?.[1] || '';
 
@@ -1045,13 +1212,20 @@ app.post('/api/webhooks/telegram', async (req, res) => {
 app.post('/api/webhooks/chat/:adapter', async (req, res) => {
   try {
     const adapter = req.params.adapter;
+    const rawBody = req.body ?? {};
+
+    // Dispatch chat.* workflow triggers if text is present (non-blocking)
+    if (rawBody.replyText || rawBody.text) {
+      tryChatWorkflowTrigger(adapter, String(rawBody.replyText || rawBody.text), String(rawBody.approver || 'unknown')).catch(() => {});
+    }
+
     const body = z.object({
       runId: z.string(),
       replyText: z.string(),
       approver: z.string().default('human'),
       idempotencyKey: z.string().optional(),
       boardId: z.string().optional()
-    }).parse(req.body ?? {});
+    }).parse(rawBody);
 
     const out = await humanApprovePost({
       runId: body.runId,

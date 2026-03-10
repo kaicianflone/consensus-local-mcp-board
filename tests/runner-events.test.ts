@@ -21,6 +21,13 @@ const {
   mockComputeReputationFromLedger,
   mockSendHumanApprovalPrompt,
   mockRegisterPendingApproval,
+  mockFetchStaleTasks,
+  mockFetchOverdueTasks,
+  mockFetchStalePRs,
+  mockFetchFailedChecksPRs,
+  mockFetchUnreviewedPRs,
+  mockFetchTriageIssues,
+  mockGetCredential,
 } = vi.hoisted(() => ({
   mockAppendEvent: vi.fn(),
   mockCreateRun: vi.fn(() => ({ id: 'run-test-1' })),
@@ -85,6 +92,17 @@ const {
   mockSendHumanApprovalPrompt: vi.fn(async () => {}),
   mockRegisterPendingApproval: vi.fn(),
   mockComputeReputationFromLedger: vi.fn(() => 100),
+  mockFetchStaleTasks: vi.fn(async () => [{ id: 'stale-1', title: 'Stale task', priority: 2, state: { name: 'Backlog', type: 'backlog' }, updatedAt: '2026-01-01T00:00:00Z', assignee: null, labels: [] }]),
+  mockFetchOverdueTasks: vi.fn(async () => [{ id: 'overdue-1', title: 'Overdue task', dueDate: '2026-02-01', priority: 1, state: { name: 'In Progress' }, assignee: { id: 'u1', name: 'Alice' }, labels: [] }]),
+  mockFetchStalePRs: vi.fn(() => [{ number: 10, title: 'Stale PR', author: 'alice', url: '', headBranch: 'feat', baseBranch: 'main', createdAt: '', updatedAt: '', daysSinceUpdate: 14 }]),
+  mockFetchFailedChecksPRs: vi.fn(() => [{ number: 20, title: 'Broken PR', author: 'bob', url: '', headBranch: 'fix', failedChecks: [{ name: 'CI', completedAt: '', detailsUrl: '' }] }]),
+  mockFetchUnreviewedPRs: vi.fn(() => [{ number: 30, title: 'Waiting PR', author: 'charlie', url: '', headBranch: 'feat2', createdAt: '', reviewDecision: 'PENDING', daysPending: 5 }]),
+  mockFetchTriageIssues: vi.fn(() => [{ number: 40, title: 'Needs triage', url: '', createdAt: '', labels: [], assignees: [], reason: 'both' }]),
+  mockGetCredential: vi.fn((_db: any, provider: string, key: string) => {
+    if (provider === 'linear' && key === 'api_key') return 'lin_test_key';
+    if (provider === 'linear' && key === 'team_id') return 'TEAM-1';
+    return null;
+  }),
 }));
 
 vi.mock('workflow', () => ({
@@ -126,6 +144,25 @@ vi.mock('../server/src/adapters/chat-sdk.js', () => ({
 
 vi.mock('../server/src/engine/hitl-tracker.js', () => ({
   registerPendingApproval: mockRegisterPendingApproval,
+}));
+
+vi.mock('../server/src/adapters/linear-client.js', () => ({
+  fetchUnassignedSubtasks: vi.fn(async () => []),
+  fetchTeamMembers: vi.fn(async () => []),
+  assignIssue: vi.fn(async () => ({ success: true })),
+  fetchStaleTasks: mockFetchStaleTasks,
+  fetchOverdueTasks: mockFetchOverdueTasks,
+}));
+
+vi.mock('../server/src/adapters/github-client.js', () => ({
+  fetchStalePRs: mockFetchStalePRs,
+  fetchFailedChecksPRs: mockFetchFailedChecksPRs,
+  fetchUnreviewedPRs: mockFetchUnreviewedPRs,
+  fetchTriageIssues: mockFetchTriageIssues,
+}));
+
+vi.mock('../server/src/db/credentials.js', () => ({
+  getCredential: mockGetCredential,
 }));
 
 import { executeLocalFlow } from '../server/src/workflows/runner.js';
@@ -532,6 +569,146 @@ describe('Runner event emissions', () => {
       expect(quorums[0][3]).toHaveProperty('board_audit_id');
       expect(quorums[0][3]).toHaveProperty('board_engine');
     });
+  });
+
+  // ── Cron trigger subtypes ──
+
+  describe('Cron trigger event subtypes', () => {
+    it('should resolve cron.linear.stale_tasks trigger with fetched data', async () => {
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.linear.stale_tasks', cronExpression: '*/30 * * * *', team: 'ENG', staleDays: 14 },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      expect(mockFetchStaleTasks).toHaveBeenCalledWith('lin_test_key', 'ENG', 14, undefined);
+
+      const executed = getEventsOfType('WORKFLOW_NODE_EXECUTED');
+      const triggerExec = executed.find(([, , , p]: any) => p.node_type === 'trigger');
+      expect(triggerExec).toBeDefined();
+      expect(triggerExec![3].output.event).toBe('cron.linear.stale_tasks');
+      expect(triggerExec![3].output.tasks).toHaveLength(1);
+    });
+
+    it('should resolve cron.linear.overdue_tasks trigger', async () => {
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.linear.overdue_tasks', cronExpression: '0 9 * * *', team: 'ENG', priorityFilter: '2' },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      expect(mockFetchOverdueTasks).toHaveBeenCalledWith('lin_test_key', 'ENG', undefined, 2);
+
+      const executed = getEventsOfType('WORKFLOW_NODE_EXECUTED');
+      const triggerExec = executed.find(([, , , p]: any) => p.node_type === 'trigger');
+      expect(triggerExec![3].output.event).toBe('cron.linear.overdue_tasks');
+    });
+
+    it('should resolve cron.github.stale_prs trigger', async () => {
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.github.stale_prs', cronExpression: '0 * * * *', repo: 'owner/repo', staleDays: 7 },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      expect(mockFetchStalePRs).toHaveBeenCalledWith('owner/repo', 7, undefined);
+
+      const executed = getEventsOfType('WORKFLOW_NODE_EXECUTED');
+      const triggerExec = executed.find(([, , , p]: any) => p.node_type === 'trigger');
+      expect(triggerExec![3].output.event).toBe('cron.github.stale_prs');
+      expect(triggerExec![3].output.prs).toHaveLength(1);
+    });
+
+    it('should resolve cron.github.failed_checks trigger', async () => {
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.github.failed_checks', repo: 'owner/repo', failedForHours: 12 },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      expect(mockFetchFailedChecksPRs).toHaveBeenCalledWith('owner/repo', 12, undefined);
+    });
+
+    it('should resolve cron.github.unreviewed_prs trigger', async () => {
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.github.unreviewed_prs', repo: 'owner/repo', pendingDays: 3 },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      expect(mockFetchUnreviewedPRs).toHaveBeenCalledWith('owner/repo', 3, undefined);
+    });
+
+    it('should resolve cron.github.issue_triage trigger', async () => {
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.github.issue_triage', repo: 'owner/repo', includeUnlabeled: true, includeUnassigned: false },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      expect(mockFetchTriageIssues).toHaveBeenCalledWith('owner/repo', true, false);
+    });
+
+    it('should return error when GitHub repo is not configured', async () => {
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.github.stale_prs', repo: '' },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      const executed = getEventsOfType('WORKFLOW_NODE_EXECUTED');
+      const triggerExec = executed.find(([, , , p]: any) => p.node_type === 'trigger');
+      expect(triggerExec![3].output.ok).toBe(false);
+      expect(triggerExec![3].output.error).toContain('Repository not configured');
+    });
+
+    it('should return error when Linear API key is not configured', async () => {
+      mockGetCredential.mockReturnValue(null);
+
+      const cronTrigger = {
+        id: 'trigger-cron',
+        type: 'trigger',
+        label: 'Cron Trigger',
+        config: { source: 'cron.linear.stale_tasks', team: 'ENG', staleDays: 7 },
+      };
+
+      const def = makeWorkflow([cronTrigger]);
+      await executeLocalFlow(def, 'wf-1');
+
+      const executed = getEventsOfType('WORKFLOW_NODE_EXECUTED');
+      const triggerExec = executed.find(([, , , p]: any) => p.node_type === 'trigger');
+      expect(triggerExec![3].output.ok).toBe(false);
+      expect(triggerExec![3].output.error).toContain('Linear API key');
+    });
+
   });
 
   // ── Workflow lifecycle ──

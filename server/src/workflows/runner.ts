@@ -18,7 +18,8 @@ import { evaluateWithAiSdk, type AgentPersona } from '../adapters/ai-sdk.js';
 import { sendHumanApprovalPrompt, type ChatPrompt } from '../adapters/chat-sdk.js';
 import { evaluateViaConsensusTools, resolveVerdictsViaBoard, type AgentVerdict } from '../adapters/consensus-tools.js';
 import { registerPendingApproval } from '../engine/hitl-tracker.js';
-import { fetchUnassignedSubtasks, fetchTeamMembers, assignIssue } from '../adapters/linear-client.js';
+import { fetchUnassignedSubtasks, fetchTeamMembers, assignIssue, fetchStaleTasks, fetchOverdueTasks } from '../adapters/linear-client.js';
+import { fetchStalePRs, fetchFailedChecksPRs, fetchUnreviewedPRs, fetchTriageIssues } from '../adapters/github-client.js';
 import { getCredential } from '../db/credentials.js';
 import { db } from '../db/store.js';
 
@@ -480,39 +481,81 @@ async function executeNode(node: any, context: Record<string, any>, ids: { board
         warning: !node.config?.team ? 'team is not configured — configure it in the trigger node or Settings → Linear' : undefined,
       };
     }
-    if (source === 'cron' || String(source).startsWith('cron.')) {
-      if (context.__triggerPayload?.ok) return context.__triggerPayload;
+    if (String(source).startsWith('cron.')) {
+      // If the cron scheduler already pre-resolved typed data, use it
+      if (context.__triggerPayload?.ok && context.__triggerPayload?.event) return context.__triggerPayload;
 
-      const adapter = node.config?.adapter || '';
-      if (adapter === 'linear') {
+      const cronEvent = source;
+
+      // ── Linear cron events ──
+      if (cronEvent.startsWith('cron.linear.')) {
         const apiKey = getCredential(db, 'linear', 'api_key');
         if (!apiKey) {
-          return { ok: false, trigger: 'cron', error: 'Linear API key not configured — add it in Settings → Linear' };
+          return { ok: false, trigger: 'cron', event: cronEvent, error: 'Linear API key not configured — add it in Settings → Linear' };
         }
         const teamId = node.config?.team || getCredential(db, 'linear', 'team_id') || '';
         if (!teamId) {
-          return { ok: false, trigger: 'cron', error: 'Linear team ID not configured — set it in the trigger node or Settings → Linear' };
+          return { ok: false, trigger: 'cron', event: cronEvent, error: 'Linear team ID not configured — set it in the trigger node or Settings → Linear' };
         }
-        const memberIds = node.config?.memberIds
-          ? String(node.config.memberIds).split(',').map((s: string) => s.trim()).filter(Boolean)
-          : undefined;
 
-        const [subtasks, members] = await Promise.all([
-          fetchUnassignedSubtasks(apiKey, teamId, node.config?.project || undefined),
-          fetchTeamMembers(apiKey, teamId, memberIds),
-        ]);
-
-        return {
-          ok: true,
-          trigger: 'cron',
-          provider: 'linear',
-          team: teamId,
-          subtasks,
-          members,
-          fetchedAt: new Date().toISOString(),
-        };
+        switch (cronEvent) {
+          case 'cron.linear.unassigned_subtasks': {
+            const memberIds = node.config?.memberIds
+              ? String(node.config.memberIds).split(',').map((s: string) => s.trim()).filter(Boolean)
+              : undefined;
+            const [subtasks, members] = await Promise.all([
+              fetchUnassignedSubtasks(apiKey, teamId, node.config?.project || undefined),
+              fetchTeamMembers(apiKey, teamId, memberIds),
+            ]);
+            return { ok: true, trigger: 'cron', provider: 'linear', event: cronEvent, team: teamId, subtasks, members, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.linear.stale_tasks': {
+            const staleDays = Number(node.config?.staleDays) || 7;
+            const tasks = await fetchStaleTasks(apiKey, teamId, staleDays, node.config?.project || undefined);
+            return { ok: true, trigger: 'cron', provider: 'linear', event: cronEvent, team: teamId, staleDays, tasks, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.linear.overdue_tasks': {
+            const priorityFilter = Number(node.config?.priorityFilter) || 0;
+            const tasks = await fetchOverdueTasks(apiKey, teamId, node.config?.project || undefined, priorityFilter || undefined);
+            return { ok: true, trigger: 'cron', provider: 'linear', event: cronEvent, team: teamId, tasks, fetchedAt: new Date().toISOString() };
+          }
+        }
       }
-      return { ok: true, trigger: 'cron' };
+
+      // ── GitHub cron events ──
+      if (cronEvent.startsWith('cron.github.')) {
+        const repo = node.config?.repo || '';
+        if (!repo) {
+          return { ok: false, trigger: 'cron', event: cronEvent, error: 'Repository not configured — set it in the trigger node (owner/repo)' };
+        }
+        const baseBranch = node.config?.branch || undefined;
+
+        switch (cronEvent) {
+          case 'cron.github.stale_prs': {
+            const staleDays = Number(node.config?.staleDays) || 7;
+            const prs = fetchStalePRs(repo, staleDays, baseBranch);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, staleDays, prs, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.github.failed_checks': {
+            const failedForHours = Number(node.config?.failedForHours) || 6;
+            const prs = fetchFailedChecksPRs(repo, failedForHours, baseBranch);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, failedForHours, prs, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.github.unreviewed_prs': {
+            const pendingDays = Number(node.config?.pendingDays) || 2;
+            const prs = fetchUnreviewedPRs(repo, pendingDays, baseBranch);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, pendingDays, prs, fetchedAt: new Date().toISOString() };
+          }
+          case 'cron.github.issue_triage': {
+            const includeUnlabeled = node.config?.includeUnlabeled !== false;
+            const includeUnassigned = node.config?.includeUnassigned !== false;
+            const issues = fetchTriageIssues(repo, includeUnlabeled, includeUnassigned);
+            return { ok: true, trigger: 'cron', provider: 'github', event: cronEvent, repo, issues, fetchedAt: new Date().toISOString() };
+          }
+        }
+      }
+
+      return { ok: true, trigger: 'cron', event: cronEvent };
     }
     return { ok: true, trigger: source };
   }
