@@ -8,26 +8,36 @@ import {
 } from '../ui/dialog';
 import {
   Play, Save, FilePlus, FolderOpen, Pencil, Copy,
-  ChevronDown, Check, X, Workflow
+  ChevronDown, Check, X, Workflow, LayoutTemplate, Trash2
 } from 'lucide-react';
+
+export type TemplateItem = {
+  id: string;
+  name: string;
+  nodeCount: number;
+};
 
 interface WorkflowToolbarProps {
   name: string;
   workflowId: string | null;
   saved: any[];
+  templates: TemplateItem[];
+  isTemplate?: boolean;
   onNameChange: (name: string) => void;
   onSave: () => Promise<void>;
   onSaveAs: (newName: string) => Promise<void>;
   onNew: () => void;
+  onDelete: () => Promise<void>;
   onRun: () => Promise<void>;
   onLoad: (id: string) => Promise<void>;
+  onLoadTemplate: (id: string) => Promise<void>;
   isSaving?: boolean;
   saveSuccess?: boolean;
 }
 
 export function WorkflowToolbar({
-  name, workflowId, saved,
-  onNameChange, onSave, onSaveAs, onNew, onRun, onLoad,
+  name, workflowId, saved, templates, isTemplate,
+  onNameChange, onSave, onSaveAs, onNew, onDelete, onRun, onLoad, onLoadTemplate,
   isSaving, saveSuccess
 }: WorkflowToolbarProps) {
   const [renaming, setRenaming] = useState(false);
@@ -35,8 +45,10 @@ export function WorkflowToolbar({
   const [showSaveAs, setShowSaveAs] = useState(false);
   const [saveAsName, setSaveAsName] = useState('');
   const [showLoad, setShowLoad] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const renameRef = useRef<HTMLInputElement>(null);
   const loadRef = useRef<HTMLDivElement>(null);
+  const templatesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (renaming && renameRef.current) {
@@ -54,10 +66,13 @@ export function WorkflowToolbar({
       if (loadRef.current && !loadRef.current.contains(e.target as Node)) {
         setShowLoad(false);
       }
+      if (templatesRef.current && !templatesRef.current.contains(e.target as Node)) {
+        setShowTemplates(false);
+      }
     }
-    if (showLoad) document.addEventListener('mousedown', handleClick);
+    if (showLoad || showTemplates) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [showLoad]);
+  }, [showLoad, showTemplates]);
 
   function handleRenameConfirm() {
     const trimmed = renameValue.trim();
@@ -124,6 +139,17 @@ export function WorkflowToolbar({
             <FilePlus className="h-3.5 w-3.5" /> New
           </Button>
 
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1.5 h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={onDelete}
+            disabled={!workflowId || isTemplate}
+            title={!workflowId ? 'No saved workflow to delete' : isTemplate ? 'Cannot delete a template' : 'Delete this workflow'}
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Delete
+          </Button>
+
           <Separator orientation="vertical" className="h-5 mx-0.5" />
 
           <Button
@@ -131,7 +157,8 @@ export function WorkflowToolbar({
             variant="ghost"
             className={`gap-1.5 h-7 text-xs transition-all duration-300 ${saveSuccess ? 'text-emerald-500 bg-emerald-500/10' : ''}`}
             onClick={onSave}
-            disabled={isSaving}
+            disabled={isSaving || isTemplate}
+            title={isTemplate ? 'Use Save As to create a copy of this template' : undefined}
           >
             {saveSuccess ? (
               <>
@@ -188,6 +215,43 @@ export function WorkflowToolbar({
                 {!saved.length && (
                   <div className="px-3 py-3 text-sm text-muted-foreground text-center">
                     No saved workflows yet
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Separator orientation="vertical" className="h-5 mx-0.5" />
+
+          <div className="relative" ref={templatesRef}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5 h-7 text-xs"
+              onClick={() => setShowTemplates(!showTemplates)}
+            >
+              <LayoutTemplate className="h-3.5 w-3.5" /> Templates
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+
+            {showTemplates && (
+              <div className="absolute right-0 top-full mt-1 w-80 bg-card border rounded-lg shadow-xl z-40 py-1 max-h-64 overflow-y-auto">
+                <div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Workflow Templates
+                </div>
+                {templates.map((t) => (
+                  <button
+                    key={t.id}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center justify-between gap-2"
+                    onClick={async () => { await onLoadTemplate(t.id); setShowTemplates(false); }}
+                  >
+                    <span className="truncate">{t.name}</span>
+                    <Badge variant="outline" className="text-[9px] shrink-0">{t.nodeCount} nodes</Badge>
+                  </button>
+                ))}
+                {!templates.length && (
+                  <div className="px-3 py-3 text-sm text-muted-foreground text-center">
+                    No templates available
                   </div>
                 )}
               </div>

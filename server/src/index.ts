@@ -1,7 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
 import { EvaluateInputSchema, GuardEvaluateRequestSchema, HumanApprovalRequestSchema } from '@local-mcp-board/shared';
-import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, db, deleteParticipant, deleteEvents, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listDistinctRunIds, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment, type WorkflowRecord } from './db/store.js';
+import { aggregateVotes, connectAgent, createBoard, createParticipant, createWorkflow, db, deleteParticipant, deleteEvents, deleteWorkflow, getAgentByApiKey, getBoard, getPolicyAssignment, getRun, getWorkflow, getWorkflowRunByRunId, listAgents, listBoards, listDistinctRunIds, listEvents, listParticipants, listRuns, listWorkflowRunsDetailed, listWorkflows, searchEvents, submitVote, updateParticipant, updateWorkflow, upsertPolicyAssignment, type WorkflowRecord } from './db/store.js';
 import { err, toHttpStatus } from './utils/errors.js';
 import { invokeTool, listToolNames } from './tools/registry.js';
 import { guardEvaluatePost } from './api/guard.evaluate.post.js';
@@ -87,6 +87,45 @@ const TEMPLATE_1 = {
     { id: 'human-approval-final-yes-no', type: 'hitl', label: 'Slack Final Execute Y/N', config: { channel: 'slack', mode: 'yes-no', threshold: 0.5 } },
     { id: 'action-merge-pr', type: 'action', label: 'Merge PR', config: { action: 'github.merge_pr', requireGuardPass: true, requireFinalHumanApprovalYes: true, idempotencyKeyFrom: 'pr.sha' } }
   ]
+};
+
+const TEMPLATE_2 = {
+  boardId: 'workflow-system',
+  nodes: [
+    { id: 'trigger-linear-task', type: 'trigger', label: 'Linear Task Submitted', config: { source: 'linear.task.created', provider: 'linear-mcp', project: '', team: '' } },
+    { id: 'parallel-decomp-review', type: 'group', label: 'Parallel Review', config: { linkedGuardId: 'guard-task-decomp', children: [
+      { id: 'agent-decomp-1', type: 'agent', label: 'Task Decomposer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'task-decomposer', model: 'gpt-5.4', systemPrompt: 'You are a task decomposition specialist. Given a parent task, break it into logical, non-overlapping subtasks that can each be assigned independently. Ensure subtasks are concrete, ordered, and cover all critical steps. Return your analysis as a structured vote.' } },
+      { id: 'agent-decomp-2', type: 'agent', label: 'Planning Reviewer', config: { agentCount: 1, personaMode: 'manual', personaNames: 'planning-reviewer', model: 'gpt-5.4', systemPrompt: 'You are a project planning reviewer. Evaluate proposed subtask decompositions for completeness, logical ordering, independence, and clarity. Flag any missing steps, overlaps, or vague items.' } },
+      { id: 'agent-decomp-3', type: 'agent', label: 'Scope Analyst', config: { agentCount: 1, personaMode: 'manual', personaNames: 'scope-analyst', model: 'gpt-5.4', systemPrompt: 'You are a scope analyst. Verify that each proposed subtask stays within the bounds of the parent task, does not introduce scope creep, and is sized appropriately for independent assignment.' } }
+    ] } },
+    { id: 'guard-task-decomp', type: 'guard', label: 'Task Decomposition Guard', config: {
+      guardType: 'agent_action',
+      quorum: 0.6,
+      riskThreshold: 0.7,
+      hitlThreshold: 0.6,
+      blockAboveRisk: 0.92,
+      numberOfReviewers: 3,
+      policyPack: 'task-decomposition',
+      irreversibleDefault: false,
+      evaluationRubric: JSON.stringify({
+        evaluation_criteria: [
+          'subtasks are logically ordered',
+          'subtasks do not overlap',
+          'each subtask can be assigned independently',
+          'no critical steps missing',
+          'subtasks are concrete and understandable'
+        ]
+      }),
+      actionType: 'task_decomposition'
+    } },
+    { id: 'human-approval-decomp', type: 'hitl', label: 'Human Approval (optional)', config: { channel: 'slack', mode: 'yes-no', threshold: 0.7 } },
+    { id: 'action-create-plan', type: 'action', label: 'Create Linear Task Plan', config: { action: 'linear.create_subtasks', requireGuardPass: true } }
+  ]
+};
+
+const WORKFLOW_TEMPLATES: Record<string, { name: string; definition: any }> = {
+  'template-github-pr': { name: 'Template 1 - GitHub PR Merge Guard', definition: TEMPLATE_1 },
+  'template-linear-tasks': { name: 'Template 2 - Linear Task Decomposition', definition: TEMPLATE_2 },
 };
 
 function validateWorkflowDefinition(definition: any) {
@@ -294,15 +333,30 @@ app.post('/api/agent/trigger', async (req, res) => {
 });
 
 app.get('/api/workflows', (_req, res) => {
-  const existing = listWorkflows();
-  if (!existing.length) {
-    createWorkflow('Template 1 - GitHub PR Merge Guard', TEMPLATE_1 as any);
-  } else {
-    // Keep Template 1 definition in sync with code
-    const tmpl = existing.find((w: any) => w.name === 'Template 1 - GitHub PR Merge Guard');
-    if (tmpl) updateWorkflow((tmpl as any).id, { definition: TEMPLATE_1 as any });
-  }
   res.json({ workflows: listWorkflows() });
+});
+
+// ── Workflow Template Endpoints ──
+
+app.get('/api/templates', (_req, res) => {
+  const templates = Object.entries(WORKFLOW_TEMPLATES).map(([id, tmpl]) => ({
+    id,
+    name: tmpl.name,
+    nodeCount: tmpl.definition.nodes?.length || 0,
+  }));
+  res.json({ templates });
+});
+
+app.get('/api/templates/:id', (req, res) => {
+  const tmpl = WORKFLOW_TEMPLATES[req.params.id];
+  if (!tmpl) return res.status(404).json(err('TEMPLATE_NOT_FOUND', 'Template not found'));
+  res.json({ template: { id: req.params.id, name: tmpl.name, definition: tmpl.definition } });
+});
+
+app.post('/api/templates/:id/load', (req, res) => {
+  const tmpl = WORKFLOW_TEMPLATES[req.params.id];
+  if (!tmpl) return res.status(404).json(err('TEMPLATE_NOT_FOUND', 'Template not found'));
+  res.json({ template: { id: req.params.id, name: tmpl.name, definition: tmpl.definition } });
 });
 
 app.post('/api/workflows', (req, res) => {
@@ -335,6 +389,13 @@ app.put('/api/workflows/:id', (req, res) => {
   } catch (e: any) {
     res.status(400).json(err('INVALID_INPUT', 'Invalid workflow update', e?.message));
   }
+});
+
+app.delete('/api/workflows/:id', (req, res) => {
+  const workflow = getWorkflow(req.params.id);
+  if (!workflow) return res.status(404).json(err('WORKFLOW_NOT_FOUND', 'Workflow not found'));
+  deleteWorkflow(req.params.id);
+  res.json({ ok: true });
 });
 
 app.post('/api/workflows/:id/run', async (req, res) => {
@@ -608,6 +669,7 @@ const VALID_ADAPTERS: Record<string, string> = {
   gchat: '@chat-adapter/gchat',
   discord: '@chat-adapter/discord',
   telegram: '@chat-adapter/telegram',
+  linear: '@linear/sdk',
 };
 
 function getInstalledAdapters(): Record<string, boolean> {

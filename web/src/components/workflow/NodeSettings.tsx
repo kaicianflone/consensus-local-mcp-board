@@ -23,6 +23,9 @@ const TRIGGER_SOURCES = [
   { id: 'github.pr.opened', label: 'GitHub PR Opened' },
   { id: 'github.pr.updated', label: 'GitHub PR Updated' },
   { id: 'github.pr.review_requested', label: 'GitHub PR Review Requested' },
+  { id: 'linear.task.created', label: 'Linear Task Created' },
+  { id: 'linear.task.updated', label: 'Linear Task Updated' },
+  { id: 'linear.webhook', label: 'Linear Webhook' },
   { id: 'chat.message', label: 'Chat Message' },
   { id: 'chat.mention', label: 'Chat Mention' },
   { id: 'chat.command', label: 'Chat Command' },
@@ -93,8 +96,8 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
   }
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader className="pb-3">
+    <Card className="flex flex-col h-full">
+      <CardHeader className="pb-3 shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-3.5 w-3.5" /> Node Settings
@@ -102,7 +105,7 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
           <Badge variant="secondary">{node.type}</Badge>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto scrollbar-custom">
+      <CardContent className="flex-1 min-h-0 overflow-y-auto scrollbar-custom">
         <div className="grid grid-cols-2 gap-4">
           {node.type === 'trigger' && (
             <>
@@ -131,6 +134,29 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
                       <span>Webhook mode — configure your GitHub repo to send <strong>Pull request</strong> events to this server. See <strong>Settings → GitHub</strong> for the webhook URL and secret.</span>
                     ) : (
                       <span>Manual poll mode — clicking Run fetches the most recent open PR on the configured branch via <code>gh pr list</code>. Requires <code>gh</code> to be authenticated.</span>
+                    )}
+                  </div>
+                </>
+              )}
+              {(draft.source || '').startsWith('linear.') && (
+                <>
+                  <div className="col-span-2">
+                    <FieldLabel>
+                      Run Mode
+                      <Select value={draft.runMode || 'webhook'} onChange={(e) => set('runMode', e.target.value)}>
+                        <option value="webhook">Webhook — real-time (recommended)</option>
+                        <option value="manual">Manual Poll — on-demand via Run button</option>
+                      </Select>
+                    </FieldLabel>
+                  </div>
+                  <FieldLabel>Team <Input value={draft.team || ''} onChange={(e) => set('team', e.target.value)} placeholder="ENG" /></FieldLabel>
+                  <FieldLabel>Project <Input value={draft.project || ''} onChange={(e) => set('project', e.target.value)} placeholder="my-project" /></FieldLabel>
+                  <div className="col-span-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400/90">
+                    <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    {(draft.runMode || 'webhook') === 'webhook' ? (
+                      <span>Webhook mode — configure a Linear webhook to send <strong>Issue</strong> events to this server. See <strong>Settings → Linear</strong> for the webhook URL and API key.</span>
+                    ) : (
+                      <span>Manual poll mode — clicking Run fetches tasks from Linear via the API. Requires a Linear API key configured in Settings.</span>
                     )}
                   </div>
                 </>
@@ -547,6 +573,15 @@ function GuardSpecificSettings({ guardType, draft, set }: { guardType: string; d
           <>
             <FieldLabel>
               <span className="flex items-center gap-1">
+                Action Type
+                <span title="The type of action being guarded. Used as metadata sent to the parallel review agents (e.g. task_decomposition, tool_call).">
+                  <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                </span>
+              </span>
+              <Input value={draft.actionType ?? ''} onChange={(e) => set('actionType', e.target.value)} placeholder="task_decomposition" />
+            </FieldLabel>
+            <FieldLabel>
+              <span className="flex items-center gap-1">
                 Irreversible Default
                 <span title="Whether agent actions are treated as irreversible by default (require review).">
                   <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
@@ -557,6 +592,22 @@ function GuardSpecificSettings({ guardType, draft, set }: { guardType: string; d
                 <option value="on">Irreversible (require review)</option>
               </Select>
             </FieldLabel>
+            <div className="col-span-2">
+              <FieldLabel>
+                <span className="flex items-center gap-1">
+                  Evaluation Rubric (JSON)
+                  <span title="JSON rubric with evaluation_criteria array. Sent to agents as the policy schema for structured review.">
+                    <Info className="h-3 w-3 text-muted-foreground/60 cursor-help" />
+                  </span>
+                </span>
+                <textarea
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono min-h-[80px] resize-y"
+                  value={draft.evaluationRubric ?? ''}
+                  onChange={(e) => set('evaluationRubric', e.target.value)}
+                  placeholder={'{\n  "evaluation_criteria": [\n    "subtasks are logically ordered",\n    "no critical steps missing"\n  ]\n}'}
+                />
+              </FieldLabel>
+            </div>
             <div className="col-span-2">
               <FieldLabel>
                 <span className="flex items-center gap-1">

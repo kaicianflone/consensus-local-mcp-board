@@ -11,7 +11,9 @@ import { AgentsPanel } from '../components/agents/AgentsPanel';
 import { WorkflowToolbar } from '../components/workflow/WorkflowToolbar';
 import {
   getWorkflows, getWorkflow, createWorkflow, updateWorkflow,
-  runWorkflow, approveWorkflowRun, getBoards, createBoard
+  deleteWorkflow as apiDeleteWorkflow,
+  runWorkflow, approveWorkflowRun, getBoards, createBoard,
+  getTemplates, getTemplate
 } from '../lib/api';
 import { Play, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 
@@ -59,6 +61,7 @@ export default function WorkflowsDashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [saved, setSaved] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
   const [runs, setRuns] = useState<any[]>([]);
   const [boardId] = useState('workflow-system');
 
@@ -81,9 +84,10 @@ export default function WorkflowsDashboard() {
 
   async function refreshList() {
     try {
-      const d = await getWorkflows();
+      const [d, t] = await Promise.all([getWorkflows(), getTemplates()]);
       const items = d.workflows || [];
       setSaved(items);
+      setTemplates(t.templates || []);
       if (!workflowId && items.length) {
         await loadWorkflow(items[0].id);
       }
@@ -286,10 +290,36 @@ export default function WorkflowsDashboard() {
     setSelectedId(null);
   }
 
+  async function handleDelete() {
+    if (!workflowId) return;
+    try {
+      await apiDeleteWorkflow(workflowId);
+      newWorkflow();
+      await refreshList();
+    } catch (error) {
+      console.error('Failed to delete workflow:', error);
+    }
+  }
+
   async function executeWorkflow() {
     if (!workflowId) return;
     await runWorkflow(workflowId);
     await loadWorkflow(workflowId);
+  }
+
+  async function handleLoadTemplate(templateId: string) {
+    try {
+      const result = await getTemplate(templateId);
+      if (result.template) {
+        setWorkflowId(null);
+        setName(result.template.name);
+        setNodes(result.template.definition?.nodes || []);
+        setRuns([]);
+        setSelectedId(null);
+      }
+    } catch (error) {
+      console.error('Failed to load template:', error);
+    }
   }
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -305,12 +335,16 @@ export default function WorkflowsDashboard() {
         name={name}
         workflowId={workflowId}
         saved={saved}
+        templates={templates}
+        isTemplate={templates.some((t) => t.name === name)}
         onNameChange={(n) => { setName(n); if (workflowId) updateWorkflow(workflowId, { name: n }).then(refreshList); }}
         onSave={saveWorkflow}
         onSaveAs={saveAsWorkflow}
         onNew={newWorkflow}
+        onDelete={handleDelete}
         onRun={executeWorkflow}
         onLoad={loadWorkflow}
+        onLoadTemplate={handleLoadTemplate}
         isSaving={isSaving}
         saveSuccess={saveSuccess}
       />
@@ -332,7 +366,7 @@ export default function WorkflowsDashboard() {
         </div>
 
         <div className="lg:col-span-6 flex flex-col gap-4 h-[600px]">
-          <div className="flex-none">
+          <div className="flex-1 min-h-0">
             <NodeSettings node={selected} onUpdate={handleUpdateConfig} boardId={boardId} isGroupChild={isGroupChild} />
           </div>
           <div className="flex-1 min-h-0">

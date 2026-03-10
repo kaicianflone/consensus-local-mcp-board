@@ -166,6 +166,11 @@ export function updateWorkflow(id: string, patch: { name?: string; definition?: 
   return getWorkflow(id);
 }
 
+export function deleteWorkflow(id: string) {
+  db.prepare('DELETE FROM workflow_runs WHERE workflow_id=?').run(id);
+  db.prepare('DELETE FROM workflows WHERE id=?').run(id);
+}
+
 export function createWorkflowRun(workflowId: string, runId: string, status = 'OPEN') {
   const id = nanoid();
   const ts = Date.now();
