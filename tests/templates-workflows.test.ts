@@ -122,7 +122,7 @@ function mockReq(overrides: Record<string, any> = {}) {
 /* ------------------------------------------------------------------ */
 
 // These are the WORKFLOW_TEMPLATES as defined in server/src/index.ts
-const TEMPLATE_IDS = ['template-github-pr', 'template-linear-tasks'];
+const TEMPLATE_IDS = ['template-github-pr', 'template-linear-tasks', 'template-linear-assign'];
 
 // Template endpoint handlers (mirrors server/src/index.ts)
 function handleGetTemplates() {
@@ -160,9 +160,10 @@ describe('Templates & Workflows', () => {
   describe('GET /api/templates', () => {
     it('should return all templates without persisting to DB', () => {
       const result = handleGetTemplates();
-      expect(result.templates).toHaveLength(2);
+      expect(result.templates).toHaveLength(3);
       expect(result.templates[0].id).toBe('template-github-pr');
       expect(result.templates[1].id).toBe('template-linear-tasks');
+      expect(result.templates[2].id).toBe('template-linear-assign');
       // Critical: listing templates must NOT call createWorkflow
       expect(mockCreateWorkflow).not.toHaveBeenCalled();
     });

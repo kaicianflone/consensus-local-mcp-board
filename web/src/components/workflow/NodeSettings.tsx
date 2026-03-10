@@ -29,6 +29,7 @@ const TRIGGER_SOURCES = [
   { id: 'chat.message', label: 'Chat Message' },
   { id: 'chat.mention', label: 'Chat Mention' },
   { id: 'chat.command', label: 'Chat Command' },
+  { id: 'cron', label: 'Cron Schedule' },
   { id: 'manual', label: 'Manual' },
   { id: 'webhook', label: 'Webhook' },
 ];
@@ -158,6 +159,26 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
                     ) : (
                       <span>Manual poll mode — clicking Run fetches tasks from Linear via the API. Requires a Linear API key configured in Settings.</span>
                     )}
+                  </div>
+                </>
+              )}
+              {(draft.source || '') === 'cron' && (
+                <>
+                  <FieldLabel>Cron Expression <Input value={draft.cronExpression || '*/30 * * * *'} onChange={(e) => set('cronExpression', e.target.value)} placeholder="*/30 * * * *" /></FieldLabel>
+                  <FieldLabel>
+                    Adapter
+                    <Select value={draft.adapter || 'linear'} onChange={(e) => set('adapter', e.target.value)}>
+                      <option value="linear">Linear</option>
+                    </Select>
+                  </FieldLabel>
+                  <FieldLabel>Team ID <Input value={draft.team || ''} onChange={(e) => set('team', e.target.value)} placeholder="ENG" /></FieldLabel>
+                  <FieldLabel>Project (optional) <Input value={draft.project || ''} onChange={(e) => set('project', e.target.value)} placeholder="my-project" /></FieldLabel>
+                  <div className="col-span-2">
+                    <FieldLabel>Member IDs (optional, comma-separated) <Input value={draft.memberIds || ''} onChange={(e) => set('memberIds', e.target.value)} placeholder="Leave empty to include all active members" /></FieldLabel>
+                  </div>
+                  <div className="col-span-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400/90">
+                    <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>Cron mode — runs on a schedule to fetch unassigned subtasks and team members from Linear. Configure the cron expression (e.g. <code>*/15 * * * *</code> for every 15 minutes). Requires a Linear API key in <strong>Settings → Linear</strong>.</span>
                   </div>
                 </>
               )}
@@ -331,7 +352,15 @@ export function NodeSettings({ node, onUpdate, boardId, isGroupChild }: NodeSett
 
           {node.type === 'action' && (
             <div className="col-span-2 space-y-3">
-              <FieldLabel>Action <Input value={draft.action || ''} onChange={(e) => set('action', e.target.value)} placeholder="github.merge_pr" /></FieldLabel>
+              <FieldLabel>
+                Action
+                <Select value={draft.action || ''} onChange={(e) => set('action', e.target.value)}>
+                  <option value="">Select action...</option>
+                  <option value="github.merge_pr">GitHub: Merge PR</option>
+                  <option value="linear.create_subtasks">Linear: Create Subtasks</option>
+                  <option value="linear.assign_subtasks">Linear: Assign Subtasks</option>
+                </Select>
+              </FieldLabel>
               {draft.action === 'github.merge_pr' && (
                 <FieldLabel>
                   <span className="flex items-center gap-1">

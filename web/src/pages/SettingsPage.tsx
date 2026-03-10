@@ -124,7 +124,7 @@ const TRIGGER_ADAPTERS: (Omit<AdapterConfig, 'packageName'> & { packageName?: st
     icon: Github,
     iconColor: "text-white",
     description: "Trigger workflows from PRs, commits, and issues.",
-    packageName: undefined,
+    packageName: "@github/cli",
     fields: [
       {
         key: "personal_access_token",
@@ -145,8 +145,8 @@ const TRIGGER_ADAPTERS: (Omit<AdapterConfig, 'packageName'> & { packageName?: st
     name: "Linear",
     icon: BarChart3,
     iconColor: "text-violet-400",
-    description: "Trigger workflows from Linear tasks and create subtask plans.",
-    packageName: "@linear/sdk",
+    description: "Trigger workflows from Linear tasks, create subtask plans, and auto-assign.",
+    packageName: "@linear/api",
     fields: [
       {
         key: "api_key",
