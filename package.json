@@ -1,6 +1,6 @@
 {
   "name": "consensus-local-mcp-board",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local-first MCP runtime for multi-agent consensus guard workflows",
   "type": "module",
   "bin": {
